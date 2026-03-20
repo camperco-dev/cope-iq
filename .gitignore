@@ -1,0 +1,47 @@
+# ── Secrets ──────────────────────────────────────────────────
+.env
+*.pem
+*.key
+service-account*.json
+gcp-credentials*.json
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.egg
+
+# ── Testing ──────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────────
+*.dockerignore
+
+# ── GCP ──────────────────────────────────────────────────────
+.gcloudignore
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
