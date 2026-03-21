@@ -4,7 +4,7 @@ Headless Chromium browser automation for qPublic (qpublic.schneidercorp.com).
 Cloudflare's CDN blocks plain HTTP clients on this domain. This module uses
 Playwright (real Chromium) to navigate the site.
 
-Discovery flow (two page loads):
+Discovery flow (two page loads, get_property_search_url):
 
   1. Homepage — all county options are pre-loaded in the initial HTML as
      div.dropdown-option elements inside state-group divs.  We parse the
@@ -15,6 +15,14 @@ Discovery flow (two page loads):
      JSON config object that explicitly names each page type.  We extract the
      "Property Search" URL (PageTypeID=2, PageID=N) from it.  Fallback: the
      nav link with text "Search" and PageTypeID=2.
+
+Scraping flow (scrape_property_search):
+
+  1. GET the county's property search form (search_page_url from platform_config).
+  2. Fill the street address into #SearchControl1's text input and submit.
+  3. If the POST redirects to a detail page (KeyValue= in URL), capture it.
+     Otherwise parse the results table for the first parcel link and follow it.
+  4. Return (pid, matched_address, html, parcel_url).
 
 Requires:
     pip install playwright
@@ -216,3 +224,141 @@ async def _extract_property_search_url(page) -> str | None:
             return href if href.startswith("http") else f"{_QPUBLIC_HOME}{href}"
 
     return None
+
+
+# ── Property scraping ─────────────────────────────────────────────────────────
+
+async def scrape_property_search(
+    search_page_url: str,
+    query: str,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """
+    Submit a property address search on a qPublic site using a Playwright browser.
+
+    Bypasses Cloudflare's CDN block that rejects plain httpx clients.
+
+    Args:
+        search_page_url: The county's Property Search form URL (PageTypeID=2).
+        query:           Street address to search (street portion only, e.g. "100 E Main St").
+
+    Returns:
+        (pid, matched_address, html, parcel_url) on success.
+        Raises ValueError if the address is not found.
+        Raises other exceptions on hard failures (timeout, navigation error).
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise RuntimeError("playwright not installed — run: pip install playwright && playwright install chromium")
+
+    print(f"[qpublic_browser] scraping {query!r} via {search_page_url}")
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        try:
+            ctx = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            page = await ctx.new_page()
+
+            # ── Step 1: load the search form ─────────────────────────────────
+            await page.goto(search_page_url, wait_until="domcontentloaded", timeout=30_000)
+            try:
+                await page.wait_for_selector("#SearchControl1", timeout=10_000)
+            except Exception:
+                pass  # some deployments use different control IDs
+
+            # ── Step 2: fill address and submit ──────────────────────────────
+            # The address input is the first text input inside #SearchControl1.
+            # Fall back to any visible text input if the ID isn't present.
+            for input_sel in [
+                "#SearchControl1 input[type='text']",
+                "input[type='text'][name*='ddress']",
+                "input[type='text']",
+            ]:
+                inp = page.locator(input_sel).first
+                if await inp.count() > 0:
+                    await inp.fill(query)
+                    print(f"[qpublic_browser] filled address input ({input_sel})")
+                    break
+
+            # Find and click the search/submit button; fall back to Enter.
+            submitted = False
+            for btn_sel in [
+                "#SearchControl1 input[type='submit']",
+                "#SearchControl1 button[type='submit']",
+                "#SearchControl1 .btn",
+                "input[type='submit']",
+                "button[type='submit']",
+            ]:
+                btn = page.locator(btn_sel).first
+                if await btn.count() > 0:
+                    await btn.click()
+                    submitted = True
+                    print(f"[qpublic_browser] clicked submit ({btn_sel})")
+                    break
+            if not submitted:
+                await page.keyboard.press("Enter")
+                print("[qpublic_browser] submitted via Enter key")
+
+            await page.wait_for_load_state("domcontentloaded", timeout=20_000)
+            await page.wait_for_timeout(1_000)
+
+            # ── Step 3: handle results or redirect ───────────────────────────
+            result_url = str(page.url)
+            print(f"[qpublic_browser] post-submit URL: {result_url}")
+
+            # Single-result redirect lands directly on the detail page.
+            if _is_detail_url(result_url):
+                html = await page.content()
+                pid = _parse_pid(result_url)
+                print(f"[qpublic_browser] single-result redirect: pid={pid!r}")
+                return pid, query, html, result_url
+
+            # Results table — find and click the first parcel link.
+            detail_sel = (
+                "a[href*='KeyValue='], "
+                "a[href*='PageType=Detail'], "
+                "a[href*='PageTypeID=4']"
+            )
+            first_link = page.locator(detail_sel).first
+            if await first_link.count() == 0:
+                raise ValueError(f"Address not found in qPublic database: {query!r}")
+
+            matched_address = (await first_link.text_content() or query).strip()
+            href = await first_link.get_attribute("href") or ""
+            detail_url = href if href.startswith("http") else _QPUBLIC_HOME + href
+
+            print(f"[qpublic_browser] following result link: {matched_address!r}")
+            await page.goto(detail_url, wait_until="domcontentloaded", timeout=20_000)
+            await page.wait_for_timeout(1_000)
+
+            # ── Step 4: capture detail page ───────────────────────────────────
+            parcel_url = str(page.url)
+            html = await page.content()
+            pid = _parse_pid(parcel_url) or _parse_pid(detail_url)
+            print(f"[qpublic_browser] detail page: pid={pid!r}  url={parcel_url}")
+            return pid, matched_address, html, parcel_url
+
+        finally:
+            await browser.close()
+
+
+def _is_detail_url(url: str) -> bool:
+    """Return True if the URL looks like a property detail page."""
+    return (
+        "KeyValue=" in url
+        or "PageType=Detail" in url
+        or "PageTypeID=4" in url
+    )
+
+
+def _parse_pid(url: str) -> str | None:
+    """Extract the KeyValue (parcel ID) from a qPublic URL."""
+    m = re.search(r"KeyValue=([^&]+)", url)
+    return m.group(1) if m else None

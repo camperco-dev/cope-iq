@@ -81,16 +81,25 @@ class QPublicPlatform(PropertyPlatform):
         query = street or address.split(",")[0].strip()
         print(f"[qpublic] app_id={app_id!r}  query={query!r}")
 
-        # Prefer an explicit search page URL from platform_config — the auto-constructed
-        # URL using only the string app_id can land on the GIS map view rather than the
-        # address search form. The correct URL uses numeric IDs (AppID, LayerID, PageTypeID=2,
-        # PageID) that are county-specific and must be copied from the live site.
+        # Prefer an explicit search page URL from platform_config.
         search_url = (
             platform_config.get("search_page_url")
             or f"{self._HOST}/Application.aspx?App={app_id}&PageTypeID=2"
         )
 
-        # ── Step 1: GET the search form and capture ASP.NET tokens ──────────
+        # ── Playwright path (bypasses Cloudflare CDN block) ──────────────────
+        try:
+            from scraper.qpublic_browser import scrape_property_search
+            pid, matched_address, html, parcel_url = await scrape_property_search(search_url, query)
+            return pid, matched_address, html, parcel_url
+        except ImportError:
+            print("[qpublic] playwright not available, falling back to httpx")
+        except ValueError:
+            raise  # address not found — propagate cleanly
+        except Exception as exc:
+            print(f"[qpublic] browser scrape failed ({exc}), falling back to httpx")
+
+        # ── httpx fallback (will 403 if Cloudflare is active) ────────────────
         print(f"[qpublic] GET search form: {search_url}")
         r1 = await client.get(search_url, headers={"User-Agent": "Mozilla/5.0"})
         r1.raise_for_status()
