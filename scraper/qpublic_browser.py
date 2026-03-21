@@ -92,8 +92,14 @@ async def get_property_search_url(state: str, county: str) -> str | None:
         "viewport": {"width": 1280, "height": 800},
     }
 
+    _STEALTH_SCRIPT = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
+        # Use headless=False to avoid Cloudflare bot fingerprinting (same as scraping flow).
+        browser = await pw.chromium.launch(
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         try:
             # ── Step 1: homepage — extract county AppID from pre-loaded DOM ──
             # All county options are present in the initial HTML as
@@ -101,6 +107,7 @@ async def get_property_search_url(state: str, county: str) -> str | None:
             # Each has a data-appid attribute with the numeric AppID.
             print(f"[qpublic_browser] GET {_QPUBLIC_HOME}")
             ctx1 = await browser.new_context(**ctx_opts)
+            await ctx1.add_init_script(_STEALTH_SCRIPT)
             page1 = await ctx1.new_page()
             await page1.goto(_QPUBLIC_HOME, wait_until="networkidle", timeout=30_000)
             await page1.wait_for_timeout(1_000)
@@ -130,6 +137,7 @@ async def get_property_search_url(state: str, county: str) -> str | None:
             app_url = f"{_QPUBLIC_HOME}/Application.aspx?AppID={app_id}"
             print(f"[qpublic_browser] GET {app_url}")
             ctx2 = await browser.new_context(**ctx_opts)
+            await ctx2.add_init_script(_STEALTH_SCRIPT)
             page2 = await ctx2.new_page()
             # domcontentloaded because the GIS map fires continuous network requests
             # and networkidle never triggers.
@@ -254,7 +262,14 @@ async def scrape_property_search(
     print(f"[qpublic_browser] scraping {query!r} via {search_page_url}")
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
+        # Cloudflare's bot detection blocks headless Chromium's form POSTs via
+        # interactive Turnstile. Running non-headless bypasses this fingerprinting.
+        # On Linux servers, set the DISPLAY environment variable or start Xvfb first:
+        #   export DISPLAY=:99 && Xvfb :99 -screen 0 1280x800x24 &
+        browser = await pw.chromium.launch(
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         try:
             ctx = await browser.new_context(
                 user_agent=(
@@ -264,35 +279,62 @@ async def scrape_property_search(
                 ),
                 viewport={"width": 1280, "height": 800},
             )
+            await ctx.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
             page = await ctx.new_page()
 
             # ── Step 1: load the search form ─────────────────────────────────
             await page.goto(search_page_url, wait_until="domcontentloaded", timeout=30_000)
+            # Wait for the address search input (class is stable across deployments).
             try:
-                await page.wait_for_selector("#SearchControl1", timeout=10_000)
+                await page.wait_for_selector("input.tt-upm-address-search", timeout=10_000)
             except Exception:
-                pass  # some deployments use different control IDs
+                pass
+
+            # ── Dismiss Terms and Conditions modal (appears on first visit) ──
+            try:
+                modal = page.locator("div.modal.in, div[role='dialog'].in")
+                if await modal.count() > 0:
+                    for accept_sel in [
+                        "button:has-text('Accept')",
+                        "button:has-text('Agree')",
+                        "button:has-text('OK')",
+                        ".modal.in .btn-primary",
+                        ".modal.in button",
+                    ]:
+                        btn = page.locator(accept_sel).first
+                        if await btn.count() > 0:
+                            await btn.click()
+                            print(f"[qpublic_browser] dismissed T&C modal ({accept_sel})")
+                            await page.wait_for_timeout(800)
+                            break
+            except Exception as e:
+                print(f"[qpublic_browser] modal dismiss attempt: {e}")
 
             # ── Step 2: fill address and submit ──────────────────────────────
-            # The address input is the first text input inside #SearchControl1.
-            # Fall back to any visible text input if the ID isn't present.
+            # qPublic uses Bootstrap + Twitter Typeahead.  The address input has
+            # class "tt-upm-address-search" and the submit button is an <a> tag
+            # with searchintent="Address" — not a standard input[type=submit].
             for input_sel in [
-                "#SearchControl1 input[type='text']",
+                "input.tt-upm-address-search",
+                "input[name*='txtAddress']",
                 "input[type='text'][name*='ddress']",
-                "input[type='text']",
             ]:
                 inp = page.locator(input_sel).first
                 if await inp.count() > 0:
-                    await inp.fill(query)
+                    await inp.click()
+                    await inp.type(query, delay=50)
                     print(f"[qpublic_browser] filled address input ({input_sel})")
                     break
 
-            # Find and click the search/submit button; fall back to Enter.
+            await page.wait_for_timeout(500)
+
             submitted = False
             for btn_sel in [
-                "#SearchControl1 input[type='submit']",
-                "#SearchControl1 button[type='submit']",
-                "#SearchControl1 .btn",
+                "a[searchintent='Address']",
+                "a.tt-upm-address-search-btn",
+                "a[id*='btnSearch'][id*='ctl03']",
                 "input[type='submit']",
                 "button[type='submit']",
             ]:
@@ -306,8 +348,16 @@ async def scrape_property_search(
                 await page.keyboard.press("Enter")
                 print("[qpublic_browser] submitted via Enter key")
 
-            await page.wait_for_load_state("domcontentloaded", timeout=20_000)
-            await page.wait_for_timeout(1_000)
+            # Wait for the POST response to load (URL changes to PageTypeID=3 for
+            # results or PageTypeID=4 for a single-result redirect).
+            try:
+                await page.wait_for_url(
+                    lambda u: "PageTypeID=3" in u or "PageTypeID=4" in u or "KeyValue=" in u,
+                    timeout=20_000,
+                )
+            except Exception:
+                # Fallback: just wait a few seconds
+                await page.wait_for_timeout(4_000)
 
             # ── Step 3: handle results or redirect ───────────────────────────
             result_url = str(page.url)
@@ -320,25 +370,41 @@ async def scrape_property_search(
                 print(f"[qpublic_browser] single-result redirect: pid={pid!r}")
                 return pid, query, html, result_url
 
-            # Results table — find and click the first parcel link.
+            # Results table (PageTypeID=3) — find and follow the first parcel link.
+            # Each row has: [checkbox, icon-link, parcel-ID-link, alt-ID, owner, address, city, map]
             detail_sel = (
                 "a[href*='KeyValue='], "
                 "a[href*='PageType=Detail'], "
                 "a[href*='PageTypeID=4']"
             )
-            first_link = page.locator(detail_sel).first
-            if await first_link.count() == 0:
+            all_links = await page.locator(detail_sel).all()
+            if not all_links:
                 raise ValueError(f"Address not found in qPublic database: {query!r}")
 
-            matched_address = (await first_link.text_content() or query).strip()
+            # Use the first result link (icon or parcel-ID link) to navigate.
+            first_link = all_links[0]
             href = await first_link.get_attribute("href") or ""
             detail_url = href if href.startswith("http") else _QPUBLIC_HOME + href
 
-            print(f"[qpublic_browser] following result link: {matched_address!r}")
+            # Try to extract the matched address from the "Property Address" column
+            # of the same table row (col index 5 in the standard qPublic layout).
+            matched_address = query
+            try:
+                row = page.locator(f"tr:has(a[href='{href}'])").first
+                if await row.count() > 0:
+                    cells = await row.locator("td").all()
+                    if len(cells) >= 6:
+                        addr_text = (await cells[5].text_content() or "").strip()
+                        if addr_text:
+                            matched_address = addr_text
+            except Exception:
+                pass  # fallback to query
+
+            print(f"[qpublic_browser] following result link: matched_address={matched_address!r}")
+
+            # ── Step 4: GET the property detail page ─────────────────────────
             await page.goto(detail_url, wait_until="domcontentloaded", timeout=20_000)
             await page.wait_for_timeout(1_000)
-
-            # ── Step 4: capture detail page ───────────────────────────────────
             parcel_url = str(page.url)
             html = await page.content()
             pid = _parse_pid(parcel_url) or _parse_pid(detail_url)

@@ -242,22 +242,27 @@ Schneider Corp / qPublic (`qpublic.schneidercorp.com`) is used by hundreds of co
 assessors across the South and Midwest. Each municipality's site is identified by an
 `app_id` stored in `platform_config`.
 
-Four-step flow:
+Four-step Playwright flow (browser automation):
 
-1. **GET** search form → capture ASP.NET hidden tokens (`__VIEWSTATE`, `__EVENTVALIDATION`, etc.)
-2. **POST** form with street address (field name discovered dynamically via CSS selector on `#SearchControl1`)
-3. **Parse results** for first `<a href*=PageType=Detail>` link, or detect single-result redirect
-4. **GET** property detail page
+1. **GET** search form via `headless=False` Chromium (Cloudflare blocks headless)
+2. **Dismiss T&C modal** — qPublic shows a Terms modal on first visit; dismiss it to unblock clicks
+3. **Fill address + click search** — address input: `input.tt-upm-address-search`; button: `a[searchintent='Address']`
+4. **Wait for results** (`PageTypeID=3`) or direct detail redirect (`PageTypeID=4` / `KeyValue=`)
+5. **GET property detail page** and return `(pid, matched_address, html, parcel_url)`
 
 **Quirks handled:**
-- Chunked `__VIEWSTATE_0`, `__VIEWSTATE_1`, … fields are detected and concatenated
-- If the POST response URL already contains `PageType=Detail`, the results-parsing step is skipped
+- Search form uses Twitter Typeahead inputs and `<a>` submit buttons — not standard `<input type=submit>`
+- The `__doPostBack` form POST to the search URL changes the page to `PageTypeID=3` (results) or directly to detail
+- Results table has columns: [select, icon, Account#, Parcel#, Owner, **Property Address**, City, Map]
+  — matched_address is extracted from column index 5 of the first result row
 - `extract_photo_url()` checks `/photos/`, `/images/`, `/parcel/` paths, then `alt="photo"`, then any `.jpg`/`.png` not matching UI asset patterns
 - `extraction_hints()` injects qPublic-specific field label mappings into the Claude prompt
 
-**Cloudflare / CDN:** Schneider Corp's CDN returns 403 for plain HTTP clients. All
-automated interaction with qPublic now goes through a headless Playwright Chromium
-browser (`scraper/qpublic_browser.py`), which passes the Cloudflare managed challenge.
+**Cloudflare / CDN:** Schneider Corp uses Cloudflare Bot Management with **interactive Turnstile**
+on POST/XHR requests. Headless Chromium triggers the challenge; non-headless (`headless=False`)
+passes because headed Chrome has a genuine browser fingerprint. All qPublic browser automation
+uses `headless=False`. Local dev (Windows): works natively. Docker (Cloud Run): Xvfb virtual
+display required — the Dockerfile installs `xvfb` and starts it as `Xvfb :99` before the server.
 
 **Required `platform_config` keys:**
 - `app_id` (str) — the `App=` parameter from the site URL, e.g. `"BryanCountyGA"`
@@ -347,8 +352,9 @@ server, and hit `POST /admin/seed`.
 - [x] Municipality auto-discovery (`scraper/discovery.py`) — unknown municipalities probed and registered on first search
 - [x] `_geocode()` returns county for qPublic discovery
 - [x] Augusta, ME added to seed data
-- [x] Headless Playwright browser for qPublic (`scraper/qpublic_browser.py`) — bypasses Cloudflare, navigates state/county UI, captures Property Search URL with numeric IDs
+- [x] Playwright browser for qPublic (`scraper/qpublic_browser.py`) — bypasses Cloudflare, navigates state/county UI, captures Property Search URL with numeric IDs
 - [x] `POST /api/admin/enrich-qpublic` — backfills `search_page_url` for existing qPublic municipalities
+- [x] qPublic property scraping via `scrape_property_search()` — non-headless Chromium bypasses Cloudflare Turnstile; results extracted from PageTypeID=3 table; Dockerfile updated with Xvfb for Cloud Run
 - [ ] Add Patriot Properties scraper strategy (`search_type: patriot`)
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
 - [ ] Expand VGSI seed data to NH, VT, MA municipalities

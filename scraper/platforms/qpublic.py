@@ -107,10 +107,14 @@ class QPublicPlatform(PropertyPlatform):
         print(f"[qpublic] captured {len(tokens)} ASP.NET token(s)")
 
         # ── Step 2: find the street address input name dynamically ──────────
-        # The ASP.NET control path is long and varies across deployments.
-        # We locate the input by finding the first text input inside #SearchControl1.
+        # qPublic uses class "tt-upm-address-search" on the address input; fall
+        # back to name-contains-txtAddress or any text input if not found.
         tree = lxhtml.fromstring(r1.text)
-        address_inputs = tree.cssselect("#SearchControl1 input[type='text']")
+        address_inputs = (
+            tree.cssselect("input.tt-upm-address-search")
+            or tree.cssselect("input[name*='txtAddress']")
+            or tree.cssselect("#SearchControl1 input[type='text']")
+        )
         if not address_inputs:
             raise ValueError(f"Could not find street address input on qPublic search page for app_id={app_id!r}")
         address_field_name = address_inputs[0].get("name")
