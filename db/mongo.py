@@ -19,15 +19,17 @@ SEED_MUNICIPALITIES = [
     {"state": "ME", "county": "Kennebec",    "municipality": "augusta",   "municipality_display": "Augusta",   "search_url": "https://gis.vgsi.com/augustame/",    "search_type": "vgsi", "platform_config": {}, "active": True},
 
     # ── Georgia / qPublic (Schneider Corp) ───────────────────────────────────
-    # App IDs follow the pattern {CountyName}County{StateAbbr} and are visible
-    # in the URL of any page on the respective assessor site.
+    # search_page_url obtained via qpublic_browser.get_property_search_url()
     {
         "state": "GA", "county": "Bryan",
         "municipality": "bryan county",
         "municipality_display": "Bryan County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "BryanCountyGA", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "BryanCountyGA", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=639&LayerID=11303&PageTypeID=2&PageID=4634",
+        },
         "active": True,
     },
     {
@@ -36,7 +38,10 @@ SEED_MUNICIPALITIES = [
         "municipality_display": "Haralson County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "HaralsonCountyGA", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "HaralsonCountyGA", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=744&LayerID=11781&PageTypeID=2&PageID=5504",
+        },
         "active": True,
     },
     {
@@ -45,7 +50,10 @@ SEED_MUNICIPALITIES = [
         "municipality_display": "Polk County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "PolkCountyGA", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "PolkCountyGA", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=690&LayerID=11379&PageTypeID=2&PageID=4804",
+        },
         "active": True,
     },
 
@@ -56,7 +64,10 @@ SEED_MUNICIPALITIES = [
         "municipality_display": "Spartanburg County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "SpartanburgCountySC", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "SpartanburgCountySC", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=857&LayerID=16069&PageTypeID=2&PageID=7147",
+        },
         "active": True,
     },
     {
@@ -65,7 +76,10 @@ SEED_MUNICIPALITIES = [
         "municipality_display": "Lancaster County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "LancasterCountySC", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "LancasterCountySC", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=211&LayerID=2815&PageTypeID=2&PageID=1551",
+        },
         "active": True,
     },
 
@@ -76,7 +90,10 @@ SEED_MUNICIPALITIES = [
         "municipality_display": "Okaloosa County",
         "search_url": "https://qpublic.schneidercorp.com",
         "search_type": "qpublic",
-        "platform_config": {"app_id": "OkaloosaCountyFL", "layer_id": "Parcels"},
+        "platform_config": {
+            "app_id": "OkaloosaCountyFL", "layer_id": "Parcels",
+            "search_page_url": "https://qpublic.schneidercorp.com/Application.aspx?AppID=855&LayerID=15999&PageTypeID=2&PageID=7112",
+        },
         "active": True,
     },
 ]
