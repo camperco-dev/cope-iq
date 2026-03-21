@@ -108,6 +108,13 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
     county = geocode.get("county", "")
     print(f"[search] step 2: municipality lookup → normalized={normalized!r}  county={county!r}")
     muni_doc = await muni_col().find_one({"municipality": normalized, "state": state, "active": True})
+    if not muni_doc and county:
+        # For qPublic counties, the municipality is stored as "{county} county" not
+        # the city name. Try a county-level lookup before running discovery.
+        county_normalized = _normalize_muni(f"{county} county")
+        muni_doc = await muni_col().find_one({"municipality": county_normalized, "state": state, "active": True})
+        if muni_doc:
+            print(f"[search] city not in DB but county matched → {muni_doc['municipality_display']}")
     if not muni_doc:
         print(f"[search] not in DB — attempting platform discovery for {locality!r}, {state!r}")
         muni_doc = await discover_and_register(locality, state, county)

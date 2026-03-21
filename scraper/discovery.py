@@ -150,10 +150,22 @@ async def discover_and_register(
     muni["date_added"] = datetime.now(timezone.utc)
     muni["added_by"] = "auto-discovery"
 
-    result = await muni_col().insert_one(muni)
-    muni["_id"] = result.inserted_id
-    print(
-        f"[discovery] registered {muni['municipality_display']}, {muni['state']} "
-        f"({muni['search_type']}) → _id={muni['_id']}"
-    )
+    try:
+        result = await muni_col().insert_one(muni)
+        muni["_id"] = result.inserted_id
+        print(
+            f"[discovery] registered {muni['municipality_display']}, {muni['state']} "
+            f"({muni['search_type']}) _id={muni['_id']}"
+        )
+    except Exception as exc:
+        if "duplicate key" in str(exc).lower() or "11000" in str(exc):
+            # Already exists (race condition or prior discovery run) — return existing doc.
+            existing = await muni_col().find_one(
+                {"municipality": muni["municipality"], "state": muni["state"]}
+            )
+            if existing:
+                print(f"[discovery] already registered (duplicate key) → returning existing doc")
+                return existing
+        raise
+
     return muni
