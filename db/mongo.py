@@ -16,6 +16,7 @@ SEED_MUNICIPALITIES = [
     {"state": "ME", "county": "Androscoggin", "municipality": "auburn",    "municipality_display": "Auburn",    "search_url": "https://gis.vgsi.com/auburnme/",     "search_type": "vgsi", "platform_config": {}, "active": True},
     {"state": "ME", "county": "Androscoggin", "municipality": "lewiston",  "municipality_display": "Lewiston",  "search_url": "https://gis.vgsi.com/lewistonme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
     {"state": "ME", "county": "Sagadahoc",    "municipality": "bath",      "municipality_display": "Bath",      "search_url": "https://gis.vgsi.com/bathme/",       "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Kennebec",    "municipality": "augusta",   "municipality_display": "Augusta",   "search_url": "https://gis.vgsi.com/augustame/",    "search_type": "vgsi", "platform_config": {}, "active": True},
 
     # ── Georgia / qPublic (Schneider Corp) ───────────────────────────────────
     # App IDs follow the pattern {CountyName}County{StateAbbr} and are visible

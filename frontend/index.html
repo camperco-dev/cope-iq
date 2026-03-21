@@ -121,11 +121,8 @@
     .search-input-wrap { width: 100%; position: relative; }
     .search-input-wrap input { font-size: 1rem; padding: .75rem 1rem; width: 100%; box-sizing: border-box; }
     #btn-search { width: 100%; }
-    #muni-status { font-size: .8rem; margin-top: .375rem; padding: .25rem .625rem; border-radius: 999px; display: inline-block; }
-    .status-supported { background: var(--green-light); color: var(--green); }
-    .status-unsupported { background: var(--yellow-light); color: var(--yellow); }
-    .status-checking { background: var(--gray-100); color: var(--gray-500); }
     #btn-search { padding: .75rem 1.5rem; font-size: .95rem; }
+    #search-error { display: none; background: var(--red-light); color: var(--red); border-radius: 8px; padding: .6rem 1rem; font-size: .85rem; margin-top: .75rem; }
 
     /* ── Result panel ── */
     #result-panel { display: none; margin-top: 1.5rem; }
@@ -324,10 +321,10 @@
         <div class="search-row">
           <div class="search-input-wrap">
             <input type="text" id="address-input" placeholder="123 Main St, Rockland, ME 04841" autocomplete="off" spellcheck="false" />
-            <div id="muni-status"></div>
           </div>
           <button class="btn btn-primary" id="btn-search" onclick="handleSearch()">Search</button>
         </div>
+        <div id="search-error"></div>
       </div>
 
       <div id="result-panel">
@@ -461,7 +458,6 @@ let _session = null;
 let _currentResult = null;
 let _allMunis = [];
 let _historyData = [];
-let _muniDebounce = null;
 let _autocomplete = null;
 
 // ── Bootstrap: fetch config, init Supabase ────────────────
@@ -589,42 +585,7 @@ function switchTab(tab) {
   if (tab === 'municipalities') renderMunis();
 }
 
-// ── Municipality status ───────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('address-input').addEventListener('input', function() {
-    clearTimeout(_muniDebounce);
-    const val = this.value.trim();
-    if (val.length < 5) { document.getElementById('muni-status').textContent = ''; return; }
-    _muniDebounce = setTimeout(() => checkMunicipality(val), 300);
-  });
-  init();
-});
-
-async function checkMunicipality(address) {
-  const statusEl = document.getElementById('muni-status');
-  statusEl.textContent = 'Checking...';
-  statusEl.className = 'status-checking';
-
-  const parts = address.split(',');
-  if (parts.length < 2) { statusEl.textContent = ''; return; }
-  const last = parts[parts.length - 1].trim().split(/\s+/);
-  const state = last.find(p => /^[A-Z]{2}$/.test(p)) || last[0] || '';
-  const town = parts[parts.length - (parts.length >= 3 ? 2 : 2)].trim();
-
-  try {
-    const r = await fetch(`/api/municipalities/search?q=${encodeURIComponent(town)}&state=${encodeURIComponent(state)}`);
-    if (r.ok) {
-      const d = await r.json();
-      statusEl.textContent = `✓ ${d.municipality_display}, ${d.state} — supported`;
-      statusEl.className = 'status-supported';
-    } else {
-      statusEl.textContent = `⚠ ${town}, ${state} — not in database`;
-      statusEl.className = 'status-unsupported';
-    }
-  } catch {
-    statusEl.textContent = '';
-  }
-}
+document.addEventListener('DOMContentLoaded', () => { init(); });
 
 // ── Search ────────────────────────────────────────────────
 async function handleSearch() {
@@ -632,8 +593,10 @@ async function handleSearch() {
   if (!address) return;
 
   const btn = document.getElementById('btn-search');
+  const errEl = document.getElementById('search-error');
   btn.disabled = true;
   btn.innerHTML = '<span class="loader"></span> Searching...';
+  errEl.style.display = 'none';
   document.getElementById('result-panel').style.display = 'none';
 
   try {
@@ -647,13 +610,15 @@ async function handleSearch() {
     if (!r.ok) {
       const detail = data.detail || data.error || 'Search failed';
       const msg = typeof detail === 'object' ? detail.error : detail;
-      alert(msg);
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
       return;
     }
     _currentResult = data;
     renderResult(data);
   } catch (e) {
-    alert('Network error: ' + e.message);
+    errEl.textContent = 'Network error: ' + e.message;
+    errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
     btn.textContent = 'Search';

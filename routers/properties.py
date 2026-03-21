@@ -8,6 +8,7 @@ import re
 from db.mongo import municipalities as muni_col, properties as prop_col
 from auth.supabase import verify_token
 from scraper.cope_scraper import search_cope
+from scraper.discovery import discover_and_register
 from config import settings
 
 router = APIRouter()
@@ -63,6 +64,7 @@ async def _geocode(address: str) -> dict:
         "place_id": result["place_id"],
         "locality": components.get("locality", components.get("sublocality", "")),
         "state": components.get("administrative_area_level_1", ""),
+        "county": re.sub(r"\s+county$", "", components.get("administrative_area_level_2", ""), flags=re.IGNORECASE).strip(),
         "postal_code": components.get("postal_code", ""),
     }
 
@@ -103,22 +105,27 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
 
     # 2. Municipality lookup
     normalized = _normalize_muni(locality)
-    print(f"[search] step 2: municipality lookup → normalized={normalized!r}")
+    county = geocode.get("county", "")
+    print(f"[search] step 2: municipality lookup → normalized={normalized!r}  county={county!r}")
     muni_doc = await muni_col().find_one({"municipality": normalized, "state": state, "active": True})
     if not muni_doc:
-        suggestion = None
-        async for doc in muni_col().find({"state": state, "active": True}):
-            suggestion = doc.get("municipality_display")
-            break
-        print(f"[search] ERROR: municipality not supported. suggestion={suggestion!r}")
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "Municipality not supported",
-                "municipality": f"{locality}, {state}",
-                "suggestion": suggestion,
-            },
-        )
+        print(f"[search] not in DB — attempting platform discovery for {locality!r}, {state!r}")
+        muni_doc = await discover_and_register(locality, state, county)
+        if not muni_doc:
+            suggestion = None
+            async for doc in muni_col().find({"state": state, "active": True}):
+                suggestion = doc.get("municipality_display")
+                break
+            print(f"[search] ERROR: municipality not supported. suggestion={suggestion!r}")
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "Municipality not supported",
+                    "municipality": f"{locality}, {state}",
+                    "suggestion": suggestion,
+                },
+            )
+        print(f"[search] auto-discovered → {muni_doc['municipality_display']}, {muni_doc['state']}")
     print(f"[search] municipality matched → {muni_doc['municipality_display']}, {muni_doc['state']}  url={muni_doc['search_url']}")
 
     # 3. Cache check

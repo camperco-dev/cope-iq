@@ -7,8 +7,9 @@ Construction, Occupancy, Protection, and Exposure (COPE) data for any physical
 property address by searching publicly available municipal property card databases.
 
 A user enters a street address. The app:
-1. Geocodes it via Google Maps to extract the municipality and state
-2. Confirms that municipality is in our supported database
+1. Geocodes it via Google Maps to extract the municipality, state, and county
+2. Looks up the municipality in the database; if not found, **auto-discovers** it by probing
+   known platform URL patterns and registers it automatically
 3. Looks up the platform implementation from `PLATFORM_REGISTRY` by `search_type`
 4. Directly HTTP-scrapes the assessor's property card site (no browser automation)
 5. Passes the raw property card text to Claude (claude-sonnet-4-5) for structured extraction
@@ -63,6 +64,7 @@ cope-iq/
 │   └── admin.py               ← health check, seed trigger (admin-only)
 ├── scraper/
 │   ├── cope_scraper.py        ← dispatcher: registry lookup, shared client, Claude call
+│   ├── discovery.py           ← auto-discovery: probe platforms, register unknown municipalities
 │   ├── prompts.py             ← SYSTEM_PROMPT + extraction_prompt() template
 │   └── platforms/
 │       ├── __init__.py        ← PLATFORM_REGISTRY dict
@@ -197,7 +199,9 @@ class PropertyPlatform(ABC):
 2. Add `"<search_type>": <ClassName>()` to `PLATFORM_REGISTRY` in `scraper/platforms/__init__.py`
 3. Add seed municipalities to `SEED_MUNICIPALITIES` in `db/mongo.py` with `"search_type": "<name>"`
    and any platform-specific keys inside `"platform_config": {}`
-4. No changes needed to `cope_scraper.py`, `routers/`, or any model
+4. Optionally add a `_probe_<name>()` coroutine to `scraper/discovery.py` and call it in
+   `discover_and_register()` so unseen municipalities on that platform are auto-registered
+5. No changes needed to `cope_scraper.py`, `routers/`, or any model
 
 ---
 
@@ -220,6 +224,13 @@ the raw HTML before tag-stripping.
 
 SSL `verify=False` is set on the shared client due to Windows cert chain issues with
 VGSI hosts. This is set in the dispatcher, not in `VGSIPlatform` itself.
+
+**Windows / OpenSSL 3.0 TLS 1.3 fix (`main.py`):** Python 3.11 on Windows ships OpenSSL 3.0
+whose TLS 1.3 handshake is incompatible with some MongoDB Atlas shard configurations. The fix
+patches `get_ssl_context()` to append `OP_NO_TLSv1_3`, forcing TLS 1.2. Critically, **both**
+`pymongo.ssl_support.get_ssl_context` and `pymongo.client_options.get_ssl_context` must be
+patched — `client_options` does `from pymongo.ssl_support import get_ssl_context` at import
+time, creating a local binding that is unaffected by patching `ssl_support` alone.
 
 ---
 
@@ -252,10 +263,39 @@ a less-restricted network path. Flagged as a TODO for a future PR.
 
 ---
 
+## Municipality Auto-Discovery
+
+`scraper/discovery.py` — `discover_and_register(locality, state, county) -> dict | None`
+
+When a municipality is not found in the database, the router calls `discover_and_register()`
+before returning an error. It probes each supported platform in order:
+
+1. **VGSI** — GETs `https://gis.vgsi.com/{municipality_nospaces}{state_lower}/` and checks
+   the response for VGSI page markers (`"vision government"`, `"vgs_icon"`). The slug is
+   built by stripping non-alphanumeric characters from the locality name and appending the
+   lowercase state code (e.g. Augusta ME → `augustame`).
+
+2. **qPublic** — GETs `https://qpublic.schneidercorp.com/Application.aspx?App={county}County{state}`
+   and checks for Schneider Corp content. Requires `county` from geocoding. Skipped if county
+   is empty. Subject to the same 403 CDN limitation as the scraper itself.
+
+On the first successful probe, the municipality document is inserted into MongoDB with
+`added_by: "auto-discovery"` and returned to the router, which continues the search
+transparently in the same request. Subsequent searches for that municipality hit the DB directly.
+
+**`_geocode()` now returns `county`** — extracted from Google's `administrative_area_level_2`
+component with the " County" suffix stripped (e.g. "Kennebec County" → "Kennebec").
+
+**VGSI marker rationale:** Sub-page markers (`getdataaddress`, `parcel.aspx`) do not appear
+on the root landing page. `"vision government"` (from `<title>`) and `"vgs_icon"` (favicon
+path) are present on every VGSI municipality's root page.
+
+---
+
 ## Seeded Municipalities
 
 ### VGSI — Maine
-Rockland, Camden, Belfast, Portland, Bangor, Biddeford, Saco, Auburn, Lewiston, Bath
+Rockland, Camden, Belfast, Portland, Bangor, Biddeford, Saco, Auburn, Lewiston, Bath, Augusta
 
 ### qPublic — Georgia
 Bryan County (`BryanCountyGA`), Haralson County (`HaralsonCountyGA`), Polk County (`PolkCountyGA`)
@@ -295,7 +335,10 @@ server, and hit `POST /admin/seed`.
 - [x] 6 qPublic municipalities seeded (GA, SC, FL)
 - [x] End-to-end validation script (`validate_phase6.py`)
 
-### Phase 3 — Coverage Expansion
+### Phase 3 — Coverage Expansion (in progress)
+- [x] Municipality auto-discovery (`scraper/discovery.py`) — unknown municipalities probed and registered on first search
+- [x] `_geocode()` returns county for qPublic discovery
+- [x] Augusta, ME added to seed data
 - [ ] Resolve qPublic 403 (session cookie warm-up or User-Agent rotation)
 - [ ] Add Patriot Properties scraper strategy (`search_type: patriot`)
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
