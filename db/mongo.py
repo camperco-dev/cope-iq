@@ -5,16 +5,79 @@ from datetime import datetime, timezone
 _client: AsyncIOMotorClient = None
 
 SEED_MUNICIPALITIES = [
-    {"state": "ME", "county": "Knox",         "municipality": "rockland",  "municipality_display": "Rockland",  "search_url": "https://gis.vgsi.com/rocklandme/",   "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Knox",         "municipality": "camden",    "municipality_display": "Camden",    "search_url": "https://gis.vgsi.com/camdenme/",     "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Waldo",        "municipality": "belfast",   "municipality_display": "Belfast",   "search_url": "https://gis.vgsi.com/belfastme/",    "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Cumberland",   "municipality": "portland",  "municipality_display": "Portland",  "search_url": "https://gis.vgsi.com/portlandme/",   "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Penobscot",    "municipality": "bangor",    "municipality_display": "Bangor",    "search_url": "https://gis.vgsi.com/bangorMe/",     "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "York",         "municipality": "biddeford", "municipality_display": "Biddeford", "search_url": "https://gis.vgsi.com/biddefordme/",  "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "York",         "municipality": "saco",      "municipality_display": "Saco",      "search_url": "https://gis.vgsi.com/sacome/",       "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Androscoggin", "municipality": "auburn",    "municipality_display": "Auburn",    "search_url": "https://gis.vgsi.com/auburnme/",     "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Androscoggin", "municipality": "lewiston",  "municipality_display": "Lewiston",  "search_url": "https://gis.vgsi.com/lewistonme/",   "search_type": "vgsi", "active": True},
-    {"state": "ME", "county": "Sagadahoc",    "municipality": "bath",      "municipality_display": "Bath",      "search_url": "https://gis.vgsi.com/bathme/",       "search_type": "vgsi", "active": True},
+    # ── Maine / VGSI ──────────────────────────────────────────────────────────
+    {"state": "ME", "county": "Knox",         "municipality": "rockland",  "municipality_display": "Rockland",  "search_url": "https://gis.vgsi.com/rocklandme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Knox",         "municipality": "camden",    "municipality_display": "Camden",    "search_url": "https://gis.vgsi.com/camdenme/",     "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Waldo",        "municipality": "belfast",   "municipality_display": "Belfast",   "search_url": "https://gis.vgsi.com/belfastme/",    "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Cumberland",   "municipality": "portland",  "municipality_display": "Portland",  "search_url": "https://gis.vgsi.com/portlandme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Penobscot",    "municipality": "bangor",    "municipality_display": "Bangor",    "search_url": "https://gis.vgsi.com/bangorMe/",     "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "York",         "municipality": "biddeford", "municipality_display": "Biddeford", "search_url": "https://gis.vgsi.com/biddefordme/",  "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "York",         "municipality": "saco",      "municipality_display": "Saco",      "search_url": "https://gis.vgsi.com/sacome/",       "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Androscoggin", "municipality": "auburn",    "municipality_display": "Auburn",    "search_url": "https://gis.vgsi.com/auburnme/",     "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Androscoggin", "municipality": "lewiston",  "municipality_display": "Lewiston",  "search_url": "https://gis.vgsi.com/lewistonme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Sagadahoc",    "municipality": "bath",      "municipality_display": "Bath",      "search_url": "https://gis.vgsi.com/bathme/",       "search_type": "vgsi", "platform_config": {}, "active": True},
+
+    # ── Georgia / qPublic (Schneider Corp) ───────────────────────────────────
+    # App IDs follow the pattern {CountyName}County{StateAbbr} and are visible
+    # in the URL of any page on the respective assessor site.
+    {
+        "state": "GA", "county": "Bryan",
+        "municipality": "bryan county",
+        "municipality_display": "Bryan County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "BryanCountyGA", "layer_id": "Parcels"},
+        "active": True,
+    },
+    {
+        "state": "GA", "county": "Haralson",
+        "municipality": "haralson county",
+        "municipality_display": "Haralson County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "HaralsonCountyGA", "layer_id": "Parcels"},
+        "active": True,
+    },
+    {
+        "state": "GA", "county": "Polk",
+        "municipality": "polk county",
+        "municipality_display": "Polk County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "PolkCountyGA", "layer_id": "Parcels"},
+        "active": True,
+    },
+
+    # ── South Carolina / qPublic ─────────────────────────────────────────────
+    {
+        "state": "SC", "county": "Spartanburg",
+        "municipality": "spartanburg county",
+        "municipality_display": "Spartanburg County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "SpartanburgCountySC", "layer_id": "Parcels"},
+        "active": True,
+    },
+    {
+        "state": "SC", "county": "Lancaster",
+        "municipality": "lancaster county",
+        "municipality_display": "Lancaster County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "LancasterCountySC", "layer_id": "Parcels"},
+        "active": True,
+    },
+
+    # ── Florida / qPublic ────────────────────────────────────────────────────
+    {
+        "state": "FL", "county": "Okaloosa",
+        "municipality": "okaloosa county",
+        "municipality_display": "Okaloosa County",
+        "search_url": "https://qpublic.schneidercorp.com",
+        "search_type": "qpublic",
+        "platform_config": {"app_id": "OkaloosaCountyFL", "layer_id": "Parcels"},
+        "active": True,
+    },
 ]
 
 
