@@ -10,6 +10,7 @@ class MunicipalityCreate(BaseModel):
     municipality_display: str
     search_url: str
     search_type: str = "vgsi"
+    platform_config: dict = Field(default_factory=dict)
     notes: Optional[str] = None
     active: bool = True
 
@@ -22,6 +23,7 @@ class MunicipalityResponse(BaseModel):
     municipality_display: str
     search_url: str
     search_type: str
+    platform_config: dict = Field(default_factory=dict)
     notes: Optional[str] = None
     active: bool
     date_added: Optional[datetime] = None

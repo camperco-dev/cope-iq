@@ -4,108 +4,108 @@ import json
 import re
 import warnings
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+
+from scraper.platforms import PLATFORM_REGISTRY
 from scraper.prompts import SYSTEM_PROMPT, extraction_prompt
 from config import settings
 
 
-async def _vgsi_fetch_property_html(base_url: str, address: str) -> tuple[str, str, str]:
+def _html_to_text(html: str) -> str:
     """
-    Search VGSI for the address, return (pid, matched_address, parcel_html).
-    Raises ValueError on no match.
+    Strip an HTML property card down to readable plain text.
+
+    Removes scripts, styles, and comments; preserves href values as inline
+    text so link targets (e.g. sketch/photo URLs) survive the tag strip.
+    Collapses whitespace to keep the token count manageable for Claude.
     """
-    base_url = base_url.rstrip("/")
-    headers = {
-        "Content-Type": "application/json; charset=utf-8",
-        "Referer": f"{base_url}/Search.aspx",
-        "User-Agent": "Mozilla/5.0",
-    }
-
-    # Strip street type suffix — avoids mismatches when VGSI uses a different
-    # suffix than the geocoder (e.g. VGSI "EXT" vs geocoder "Dr")
-    _SUFFIXES = r'\b(dr|drive|rd|road|st|street|ave|avenue|blvd|boulevard|ln|lane|ct|court|pl|place|way|ter|terrace|ext|loop|cir|circle|hwy|highway|pike|trl|trail|run)\.?\s*$'
-    address = re.sub(_SUFFIXES, '', address, flags=re.I).strip()
-    print(f"[scraper] normalized query (suffix stripped): {address!r}")
-
-    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-        # Step 1: address autocomplete API
-        print(f"[scraper] VGSI search API: {base_url}/async.asmx/GetDataAddress")
-        r = await client.post(
-            f"{base_url}/async.asmx/GetDataAddress",
-            headers=headers,
-            content=json.dumps({"inVal": address, "src": "i_address"}),
-        )
-        r.raise_for_status()
-        results = r.json().get("d", [])
-        print(f"[scraper] search returned {len(results)} result(s)")
-        if not results:
-            raise ValueError(f"Address not found in VGSI database: {address}")
-
-        best = results[0]
-        pid = best["id"]
-        matched = best["value"]
-        print(f"[scraper] best match: pid={pid!r}  address={matched!r}")
-
-        # Step 2: fetch property card HTML
-        parcel_url = f"{base_url}/Parcel.aspx?Pid={pid}"
-        print(f"[scraper] fetching property card: {parcel_url}")
-        r2 = await client.get(parcel_url, headers={"User-Agent": "Mozilla/5.0"})
-        r2.raise_for_status()
-        return pid, matched, r2.text, parcel_url
+    # Remove scripts, styles, and HTML comments.
+    cleaned = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.S | re.I)
+    cleaned = re.sub(r'<style[^>]*>.*?</style>', '', cleaned, flags=re.S | re.I)
+    cleaned = re.sub(r'<!--.*?-->', '', cleaned, flags=re.S)
+    # Preserve href values as inline text before stripping tags.
+    cleaned = re.sub(
+        r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>',
+        lambda m: m.group(0) + f' [{m.group(1)}] ',
+        cleaned,
+        flags=re.I,
+    )
+    # Strip remaining tags, collapse whitespace.
+    text = re.sub(r'<[^>]+>', ' ', cleaned)
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n\s*\n+', '\n', text).strip()
+    return text
 
 
 async def search_cope(address: str, municipality: dict, street: str | None = None) -> dict:
+    """
+    Fetch and extract COPE data for an address.
+
+    Looks up the platform implementation from PLATFORM_REGISTRY using the
+    municipality's search_type, delegates fetching and media extraction to
+    the platform, then calls Claude to extract structured JSON from the
+    property card text.
+
+    Args:
+        address:      Full geocoded address including city and state.
+        municipality: MongoDB municipality document. Must contain search_type
+                      and search_url. May contain platform_config dict.
+        street:       Street-only portion from geocoder; passed to platform.fetch()
+                      for platforms that are sensitive to city/state noise.
+
+    Returns:
+        Dict matching the COPE JSON schema, or {"error": "<message>"} on failure.
+    """
     if not settings.anthropic_api_key:
         return {"error": "AI service not configured"}
 
     search_type = municipality.get("search_type", "vgsi")
     base_url = municipality["search_url"]
+    platform_config = municipality.get("platform_config", {})
 
-    # ── Fetch property HTML ──────────────────────────────────────────────────
-    if search_type == "vgsi":
+    print(f"[scraper] platform={search_type!r}  config_keys={list(platform_config.keys())}")
+
+    # ── Resolve platform implementation ──────────────────────────────────────
+    platform = PLATFORM_REGISTRY.get(search_type)
+    if platform is None:
+        return {"error": f"Unsupported search_type: {search_type!r}. "
+                         f"Registered platforms: {list(PLATFORM_REGISTRY.keys())}"}
+
+    # ── Fetch property HTML via the platform ─────────────────────────────────
+    # The shared client owns SSL settings (verify=False for Windows cert chain issues
+    # with some municipal HTTPS hosts) and connection pooling.
+    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
         try:
-            # VGSI search only wants the street portion, not city/state
-            vgsi_query = street or address.split(",")[0].strip()
-            print(f"[scraper] VGSI query: {vgsi_query!r}")
-            pid, matched_address, html, parcel_url = await _vgsi_fetch_property_html(base_url, vgsi_query)
+            pid, matched_address, html, parcel_url = await platform.fetch(
+                base_url, address, street, platform_config, client
+            )
         except ValueError as e:
             return {"error": str(e)}
         except httpx.HTTPError as e:
-            print(f"[scraper] HTTP error fetching VGSI: {e}")
+            print(f"[scraper] HTTP error fetching {search_type}: {e}")
             return {"error": f"Could not reach property database: {e}"}
-    else:
-        return {"error": f"Unsupported search_type: {search_type}"}
 
-    # ── Preserve image/sketch URLs before stripping HTML ────────────────────
-    photo_match = re.search(r'https://images\.vgsi\.com/[^\s"\']+', html)
-    photo_url = photo_match.group(0).rstrip(')') if photo_match else None
-
-    sketch_match = re.search(r'ParcelSketch\.ashx\?[^\s"\']+', html)
-    sketch_url = (base_url.rstrip('/') + '/' + sketch_match.group(0).rstrip(')')) if sketch_match else None
-
+    # ── Extract media URLs before stripping HTML ──────────────────────────────
+    photo_url = platform.extract_photo_url(html, base_url)
+    sketch_url = platform.extract_sketch_url(html, base_url)
     print(f"[scraper] photo_url={photo_url!r}")
     print(f"[scraper] sketch_url={sketch_url!r}")
 
-    # ── Strip HTML down to readable text to save tokens ─────────────────────
-    # Remove scripts, styles, comments
-    html_clean = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.S | re.I)
-    html_clean = re.sub(r'<style[^>]*>.*?</style>', '', html_clean, flags=re.S | re.I)
-    html_clean = re.sub(r'<!--.*?-->', '', html_clean, flags=re.S)
-    # Preserve href/src values as inline text before stripping tags
-    html_clean = re.sub(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>', lambda m: m.group(0) + f' [{m.group(1)}] ', html_clean, flags=re.I)
-    # Strip tags, collapse whitespace
-    text = re.sub(r'<[^>]+>', ' ', html_clean)
-    text = re.sub(r'[ \t]+', ' ', text)
-    text = re.sub(r'\n\s*\n+', '\n', text).strip()
+    # ── Convert HTML to plain text for Claude ─────────────────────────────────
+    text = _html_to_text(html)
     print(f"[scraper] property card text: {len(text)} chars")
 
-    # ── Ask Claude to extract COPE JSON from the text ────────────────────────
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    # ── Build system prompt, injecting platform hints if present ─────────────
+    hints = platform.extraction_hints()
+    system_prompt = SYSTEM_PROMPT if not hints else f"{SYSTEM_PROMPT}\n\n{hints}"
+
+    # ── Ask Claude to extract COPE JSON ──────────────────────────────────────
+    ai_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     print(f"[scraper] sending to Claude for extraction (no tools)")
     try:
-        response = await client.messages.create(
+        response = await ai_client.messages.create(
             model="claude-sonnet-4-5",
             max_tokens=2000,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[{
                 "role": "user",
                 "content": extraction_prompt(address, matched_address, pid, parcel_url, text),
@@ -122,6 +122,7 @@ async def search_cope(address: str, municipality: dict, street: str | None = Non
     raw_text = "\n".join(b.text for b in response.content if hasattr(b, "text"))
     print(f"[scraper] raw response length={len(raw_text)} chars")
 
+    # ── Parse JSON from Claude's response ────────────────────────────────────
     json_match = re.search(r'\{[\s\S]*\}', raw_text)
     if not json_match:
         print(f"[scraper] ERROR: no JSON in response. Preview: {raw_text[:300]!r}")
