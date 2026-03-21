@@ -68,8 +68,8 @@ async def _geocode(address: str) -> dict:
 
 
 def _count_completeness(cope_result: dict) -> int:
-    """Count non-null leaf fields across COPE sub-objects."""
-    sections = ["construction", "occupancy", "protection", "exposure"]
+    """Count non-null leaf fields across all sub-objects."""
+    sections = ["construction", "occupancy", "valuation", "protection", "exposure", "owner", "sale"]
     total = 0
     filled = 0
     for section in sections:
@@ -86,24 +86,31 @@ def _count_completeness(cope_result: dict) -> int:
 @router.post("/cope/search")
 async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
     user_id = user.get("sub")
+    print(f"\n[search] ── New search ──────────────────────────")
+    print(f"[search] address : {body.address!r}")
+    print(f"[search] user    : {user_id}")
 
     # 1. Geocode
+    print(f"[search] step 1: geocoding...")
     geocode = await _geocode(body.address)
     locality = geocode.get("locality", "")
     state = geocode.get("state", "")
+    print(f"[search] geocode → locality={locality!r}  state={state!r}  formatted={geocode.get('formatted_address')!r}")
 
     if not locality or not state:
+        print(f"[search] ERROR: could not determine municipality")
         raise HTTPException(status_code=422, detail="Could not determine municipality from address")
 
     # 2. Municipality lookup
     normalized = _normalize_muni(locality)
+    print(f"[search] step 2: municipality lookup → normalized={normalized!r}")
     muni_doc = await muni_col().find_one({"municipality": normalized, "state": state, "active": True})
     if not muni_doc:
-        # Try to suggest closest
         suggestion = None
         async for doc in muni_col().find({"state": state, "active": True}):
             suggestion = doc.get("municipality_display")
             break
+        print(f"[search] ERROR: municipality not supported. suggestion={suggestion!r}")
         raise HTTPException(
             status_code=422,
             detail={
@@ -112,23 +119,34 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
                 "suggestion": suggestion,
             },
         )
+    print(f"[search] municipality matched → {muni_doc['municipality_display']}, {muni_doc['state']}  url={muni_doc['search_url']}")
 
     # 3. Cache check
     now = datetime.now(timezone.utc)
+    print(f"[search] step 3: checking cache...")
     cached = await prop_col().find_one({
         "search_address": {"$regex": f"^{re.escape(body.address)}$", "$options": "i"},
         "searched_by": user_id,
         "cache_expires_at": {"$gt": now},
     })
     if cached:
+        print(f"[search] cache HIT — returning cached result")
         cached["cached"] = True
         return _doc_to_response(cached)
+    print(f"[search] cache MISS — proceeding to scrape")
 
-    # 4. Scrape
-    cope_result = await search_cope(body.address, muni_doc)
+    # 4. Scrape — pass geocoded street so VGSI search gets street-only query
+    street = geocode.get("formatted_address", "").split(",")[0].strip()
+    print(f"[search] step 4: running AI scraper... street={street!r}")
+    cope_result = await search_cope(body.address, muni_doc, street=street)
+    if cope_result.get("error"):
+        print(f"[search] scraper ERROR: {cope_result['error']}")
+    else:
+        print(f"[search] scraper OK — matched_address={cope_result.get('matched_address')!r}  parcel={cope_result.get('parcel_id')!r}")
 
     # 5. Build and store document
     completeness = _count_completeness(cope_result)
+    print(f"[search] step 5: completeness={completeness}%")
     expires_at = now + timedelta(days=settings.cache_ttl_days)
 
     prop_doc = {
@@ -136,6 +154,7 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
         "matched_address": cope_result.get("matched_address"),
         "parcel_id": cope_result.get("parcel_id"),
         "municipality_id": muni_doc["_id"],
+        "municipality_display": f"{muni_doc['municipality_display']}, {muni_doc['state']}",
         "data_source_url": cope_result.get("data_source_url"),
         "searched_by": user_id,
         "search_timestamp": now,
@@ -147,8 +166,14 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
             "formatted_address": geocode.get("formatted_address"),
             "place_id": geocode.get("place_id"),
         },
+        "mblu": cope_result.get("mblu"),
+        "photo_url": cope_result.get("photo_url"),
+        "sketch_url": cope_result.get("sketch_url"),
+        "owner": cope_result.get("owner"),
+        "sale": cope_result.get("sale"),
         "construction": cope_result.get("construction"),
         "occupancy": cope_result.get("occupancy"),
+        "valuation": cope_result.get("valuation"),
         "protection": cope_result.get("protection"),
         "exposure": cope_result.get("exposure"),
         "notes": cope_result.get("notes"),
@@ -157,13 +182,15 @@ async def cope_search(body: SearchRequest, user: dict = Depends(verify_token)):
         "error": cope_result.get("error"),
     }
 
-    # Only persist if no hard error
     if not cope_result.get("error"):
         result = await prop_col().insert_one(prop_doc)
         prop_doc["_id"] = str(result.inserted_id)
+        print(f"[search] saved to DB → _id={prop_doc['_id']}")
     else:
         prop_doc["_id"] = None
+        print(f"[search] NOT saved (error result)")
 
+    print(f"[search] ── Done ────────────────────────────────\n")
     return _doc_to_response(prop_doc)
 
 

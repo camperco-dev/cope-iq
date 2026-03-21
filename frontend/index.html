@@ -117,34 +117,41 @@
       background: white; border-radius: 12px; padding: 1.5rem;
       box-shadow: var(--shadow); margin-bottom: 1.5rem;
     }
-    .search-row { display: flex; gap: .75rem; align-items: flex-start; }
-    .search-input-wrap { flex: 1; position: relative; }
-    .search-input-wrap input { font-size: 1rem; padding: .75rem 1rem; }
+    .search-row { display: flex; flex-direction: column; gap: .75rem; }
+    .search-input-wrap { width: 100%; position: relative; }
+    .search-input-wrap input { font-size: 1rem; padding: .75rem 1rem; width: 100%; box-sizing: border-box; }
+    #btn-search { width: 100%; }
     #muni-status { font-size: .8rem; margin-top: .375rem; padding: .25rem .625rem; border-radius: 999px; display: inline-block; }
     .status-supported { background: var(--green-light); color: var(--green); }
     .status-unsupported { background: var(--yellow-light); color: var(--yellow); }
     .status-checking { background: var(--gray-100); color: var(--gray-500); }
-    #btn-search { padding: .75rem 1.5rem; font-size: .95rem; white-space: nowrap; align-self: flex-start; }
+    #btn-search { padding: .75rem 1.5rem; font-size: .95rem; }
 
     /* ── Result panel ── */
-    #result-panel { display: none; }
+    #result-panel { display: none; margin-top: 1.5rem; }
     .result-header {
       background: white; border-radius: 12px; padding: 1.25rem 1.5rem;
       box-shadow: var(--shadow); margin-bottom: 1rem;
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem;
     }
-    .result-address { font-size: 1.1rem; font-weight: 600; }
+    .result-header-top {
+      display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-bottom: .75rem;
+    }
+    .result-address { font-size: 1.1rem; font-weight: 600; color: var(--gray-800); }
+    .result-sub { font-size: .8rem; color: var(--gray-500); margin-top: .2rem; }
     .result-meta { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
-    .badge {
-      font-size: .75rem; font-weight: 600; padding: .2rem .6rem; border-radius: 999px;
-    }
+    .badge { font-size: .75rem; font-weight: 600; padding: .2rem .6rem; border-radius: 999px; }
     .badge-cached { background: var(--blue-light); color: var(--blue); }
     .badge-live { background: var(--green-light); color: var(--green); }
     .badge-error { background: var(--red-light); color: var(--red); }
-    .completeness { font-size: .85rem; color: var(--gray-500); }
-    .source-link { font-size: .8rem; color: var(--blue); }
+    .source-link { font-size: .8rem; color: var(--blue); text-decoration: none; }
+    .source-link:hover { text-decoration: underline; }
+    .progress-bar-wrap { background: var(--gray-100); border-radius: 999px; height: 6px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; border-radius: 999px; background: var(--blue); transition: width .4s; }
+    .progress-label { font-size: .75rem; color: var(--gray-500); margin-top: .3rem; }
+    .result-error-msg { background: var(--red-light); color: var(--red); border-radius: 8px; padding: .6rem 1rem; font-size: .85rem; margin-bottom: 1rem; }
+    .result-notes-msg { background: var(--yellow-light); color: var(--yellow); border-radius: 8px; padding: .6rem 1rem; font-size: .85rem; margin-bottom: 1rem; }
 
-    .cope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .cope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
     .cope-card { background: white; border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
     .cope-card-header {
       padding: .75rem 1rem; font-size: .8rem; font-weight: 700; letter-spacing: .05em;
@@ -152,14 +159,16 @@
     }
     .cope-c .cope-card-header { background: #eff6ff; color: #1d4ed8; }
     .cope-o .cope-card-header { background: #f0fdf4; color: #15803d; }
+    .cope-v .cope-card-header { background: #fefce8; color: #854d0e; }
+    .cope-s .cope-card-header { background: #f0f9ff; color: #0369a1; }
     .cope-p .cope-card-header { background: #fff7ed; color: #c2410c; }
     .cope-e .cope-card-header { background: #fdf4ff; color: #7e22ce; }
-    .cope-card-body { padding: .75rem 1rem; }
-    .cope-row { display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; border-bottom: 1px solid var(--gray-100); }
+    .cope-card-body { padding: .5rem 1rem; }
+    .cope-row { display: flex; justify-content: space-between; align-items: baseline; padding: .35rem 0; border-bottom: 1px solid var(--gray-100); }
     .cope-row:last-child { border-bottom: none; }
     .cope-key { font-size: .8rem; color: var(--gray-500); }
-    .cope-val { font-size: .85rem; font-weight: 500; color: var(--gray-800); text-align: right; max-width: 55%; }
-    .cope-null { color: var(--gray-300); font-weight: 400; }
+    .cope-val { font-size: .85rem; font-weight: 500; color: var(--gray-800); text-align: right; max-width: 58%; }
+    .cope-null { color: var(--gray-300); font-weight: 400; font-style: italic; }
 
     .export-row { display: flex; gap: .75rem; }
 
@@ -169,7 +178,29 @@
     th { background: var(--gray-50); padding: .75rem 1rem; text-align: left; font-size: .75rem; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--gray-200); }
     td { padding: .75rem 1rem; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: var(--gray-50); }
+    tr.history-row { cursor: pointer; }
+    tr.history-row:hover td { background: var(--blue-light); }
+    tr.history-row.expanded td { background: var(--blue-light); font-weight: 500; }
+    .chevron { display: inline-block; margin-right: .4rem; transition: transform .2s; font-style: normal; }
+    tr.history-row.expanded .chevron { transform: rotate(90deg); }
+    tr.history-expand-row td { padding: 0; border-bottom: 1px solid var(--gray-200); background: var(--gray-50); }
+    tr.history-expand-row { display: none; }
+    tr.history-expand-row.open { display: table-row; }
+    .expand-inner { padding: 1rem 1.25rem; }
+    .expand-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+    .expand-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .5rem; }
+    .expand-c .expand-section-title { color: #1d4ed8; }
+    .expand-o .expand-section-title { color: #15803d; }
+    .expand-v .expand-section-title { color: #854d0e; }
+    .expand-s .expand-section-title { color: #0369a1; }
+    .expand-p .expand-section-title { color: #c2410c; }
+    .expand-e .expand-section-title { color: #7e22ce; }
+    .expand-field { display: flex; justify-content: space-between; align-items: baseline; padding: .2rem 0; border-bottom: 1px solid var(--gray-100); font-size: .8rem; }
+    .expand-field:last-child { border-bottom: none; }
+    .expand-key { color: var(--gray-500); }
+    .expand-val { font-weight: 500; color: var(--gray-800); text-align: right; }
+    .expand-null { color: var(--gray-300); font-style: italic; font-weight: 400; }
+    .expand-footer { display: flex; align-items: center; justify-content: space-between; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--gray-200); }
     .empty-state { text-align: center; padding: 3rem 1rem; color: var(--gray-400); }
 
     /* ── Municipality DB tab ── */
@@ -179,6 +210,37 @@
     /* ── Loader ── */
     .loader { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Image overlay ── */
+    #img-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.82); align-items: center; justify-content: center;
+    }
+    #img-overlay.open { display: flex; }
+    #img-overlay img {
+      max-width: 92vw; max-height: 88vh; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5); object-fit: contain;
+    }
+    #img-overlay-close {
+      position: absolute; top: 1.25rem; right: 1.5rem;
+      background: rgba(255,255,255,.15); border: none; color: white;
+      font-size: 1.6rem; line-height: 1; width: 2.25rem; height: 2.25rem;
+      border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    #img-overlay-close:hover { background: rgba(255,255,255,.3); }
+    #img-overlay-title {
+      position: absolute; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.55); color: white; font-size: .8rem;
+      padding: .3rem .9rem; border-radius: 999px;
+    }
+    .img-thumb-link {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .78rem; color: var(--blue); cursor: pointer;
+      text-decoration: none; padding: .2rem .5rem;
+      border: 1px solid var(--blue-light); border-radius: 6px;
+      background: var(--blue-light);
+    }
+    .img-thumb-link:hover { background: #dbeafe; }
 
     /* ── Responsive ── */
     @media (max-width: 600px) {
@@ -261,7 +323,7 @@
       <div class="search-box">
         <div class="search-row">
           <div class="search-input-wrap">
-            <input type="text" id="address-input" placeholder="123 Main St, Rockland, ME 04841" autocomplete="off" />
+            <input type="text" id="address-input" placeholder="123 Main St, Rockland, ME 04841" autocomplete="off" spellcheck="false" />
             <div id="muni-status"></div>
           </div>
           <button class="btn btn-primary" id="btn-search" onclick="handleSearch()">Search</button>
@@ -270,34 +332,64 @@
 
       <div id="result-panel">
         <div class="result-header">
-          <div>
-            <div class="result-address" id="res-address"></div>
-            <div style="font-size:.8rem;color:var(--gray-500);margin-top:.25rem">
-              Parcel: <span id="res-parcel">—</span>
+          <div class="result-header-top">
+            <div>
+              <div class="result-address" id="res-address"></div>
+              <div class="result-sub">Parcel: <span id="res-parcel">—</span></div>
+            </div>
+            <div class="result-meta">
+              <span class="badge" id="res-cache-badge"></span>
+              <a class="source-link" id="res-source" href="#" target="_blank" style="display:none">View source ↗</a>
             </div>
           </div>
-          <div class="result-meta">
-            <span class="badge" id="res-cache-badge"></span>
-            <span class="completeness" id="res-completeness"></span>
-            <a class="source-link" id="res-source" href="#" target="_blank" style="display:none">View source ↗</a>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="res-progress-fill" style="width:0%"></div>
+          </div>
+          <div class="progress-label" id="res-progress-label"></div>
+        </div>
+
+        <div id="res-error-msg" class="result-error-msg" style="display:none"></div>
+        <div id="res-notes-msg" class="result-notes-msg" style="display:none"></div>
+
+        <!-- Property photo + building sketch -->
+        <div id="res-images-wrap" style="display:none;display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
+          <div id="res-photo-wrap" style="display:none">
+            <a id="res-photo-link" href="#" target="_blank">
+              <img id="res-photo" src="" alt="Property photo" style="max-height:240px;border-radius:10px;box-shadow:var(--shadow)" />
+            </a>
+            <div style="font-size:.75rem;color:var(--gray-500);margin-top:.3rem;text-align:center">Property Photo</div>
+          </div>
+          <div id="res-sketch-wrap" style="display:none">
+            <a id="res-sketch-link" href="#" target="_blank">
+              <img id="res-sketch-img" src="" alt="Building sketch" style="max-height:240px;border-radius:10px;box-shadow:var(--shadow)" />
+            </a>
+            <div style="font-size:.75rem;color:var(--gray-500);margin-top:.3rem;text-align:center">Building Sketch</div>
           </div>
         </div>
 
         <div class="cope-grid">
           <div class="cope-card cope-c">
-            <div class="cope-card-header">🏗 Construction</div>
+            <div class="cope-card-header">Construction</div>
             <div class="cope-card-body" id="cope-construction"></div>
           </div>
           <div class="cope-card cope-o">
-            <div class="cope-card-header">🏢 Occupancy</div>
+            <div class="cope-card-header">Occupancy</div>
             <div class="cope-card-body" id="cope-occupancy"></div>
           </div>
+          <div class="cope-card cope-v">
+            <div class="cope-card-header">Valuation</div>
+            <div class="cope-card-body" id="cope-valuation"></div>
+          </div>
+          <div class="cope-card cope-s">
+            <div class="cope-card-header">Owner &amp; Sale</div>
+            <div class="cope-card-body" id="cope-owner-sale"></div>
+          </div>
           <div class="cope-card cope-p">
-            <div class="cope-card-header">🔥 Protection</div>
+            <div class="cope-card-header">Protection</div>
             <div class="cope-card-body" id="cope-protection"></div>
           </div>
           <div class="cope-card cope-e">
-            <div class="cope-card-header">🌊 Exposure</div>
+            <div class="cope-card-header">Exposure</div>
             <div class="cope-card-body" id="cope-exposure"></div>
           </div>
         </div>
@@ -355,12 +447,20 @@
   </main>
 </div>
 
+<!-- ── IMAGE OVERLAY ─────────────────────────────────────── -->
+<div id="img-overlay" onclick="hideImageOverlay()">
+  <button id="img-overlay-close" onclick="hideImageOverlay()" title="Close">✕</button>
+  <img id="img-overlay-img" src="" alt="" onclick="event.stopPropagation()" />
+  <div id="img-overlay-title"></div>
+</div>
+
 <script>
 // ── Config & globals ─────────────────────────────────────
 let _supabase = null;
 let _session = null;
 let _currentResult = null;
 let _allMunis = [];
+let _historyData = [];
 let _muniDebounce = null;
 let _autocomplete = null;
 
@@ -407,24 +507,8 @@ function loadScript(src) {
   });
 }
 
-function loadGoogleMaps(apiKey) {
-  window.initMap = function() {
-    const input = document.getElementById('address-input');
-    _autocomplete = new google.maps.places.Autocomplete(input, {
-      types: ['address'],
-      componentRestrictions: { country: 'us' },
-    });
-    _autocomplete.addListener('place_changed', onPlaceChanged);
-  };
-  loadScript(`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initMap`);
-}
-
-function onPlaceChanged() {
-  const place = _autocomplete.getPlace();
-  if (place && place.formatted_address) {
-    document.getElementById('address-input').value = place.formatted_address;
-    checkMunicipality(place.formatted_address);
-  }
+function loadGoogleMaps(_apiKey) {
+  // Autocomplete disabled — server-side geocoding handles address resolution.
 }
 
 // ── Auth flow ─────────────────────────────────────────────
@@ -585,13 +669,13 @@ function fmt(val) {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function fmtMoney(val) {
-  if (!val) return '<span class="cope-null">—</span>';
-  const n = parseInt(val.replace(/[^0-9]/g,''), 10);
-  if (isNaN(n)) return escHtml(val);
+  if (val == null || val === '') return '<span class="cope-null">—</span>';
+  const n = parseInt(String(val).replace(/[^0-9]/g,''), 10);
+  if (isNaN(n)) return escHtml(String(val));
   return '$' + n.toLocaleString();
 }
 
@@ -613,42 +697,234 @@ function renderResult(d) {
   badge.textContent = d.cached ? 'CACHED' : d.error ? 'ERROR' : 'LIVE';
   badge.className = 'badge ' + (d.cached ? 'badge-cached' : d.error ? 'badge-error' : 'badge-live');
 
-  document.getElementById('res-completeness').textContent = d.completeness_pct != null ? `${d.completeness_pct}% complete` : '';
+  const pct = d.completeness_pct ?? 0;
+  document.getElementById('res-progress-fill').style.width = pct + '%';
+  document.getElementById('res-progress-label').textContent = `${pct}% data completeness`;
 
   const src = document.getElementById('res-source');
-  if (d.data_source_url) { src.href = d.data_source_url; src.style.display = ''; }
+  if (d.data_source_url) { src.href = d.data_source_url; src.style.display = 'inline'; }
   else { src.style.display = 'none'; }
 
+  const errEl = document.getElementById('res-error-msg');
+  if (d.error) { errEl.textContent = d.error; errEl.style.display = 'block'; }
+  else { errEl.style.display = 'none'; }
+
+  const notesEl = document.getElementById('res-notes-msg');
+  if (d.notes) { notesEl.textContent = d.notes; notesEl.style.display = 'block'; }
+  else { notesEl.style.display = 'none'; }
+
+  // Photo
+  const photoWrap = document.getElementById('res-photo-wrap');
+  if (d.photo_url) {
+    document.getElementById('res-photo').src = d.photo_url;
+    document.getElementById('res-photo-link').href = d.photo_url;
+    photoWrap.style.display = 'block';
+  } else {
+    photoWrap.style.display = 'none';
+  }
+
+  // Building sketch
+  const sketchWrap = document.getElementById('res-sketch-wrap');
+  if (d.sketch_url) {
+    document.getElementById('res-sketch-img').src = d.sketch_url;
+    document.getElementById('res-sketch-link').href = d.sketch_url;
+    sketchWrap.style.display = 'block';
+  } else {
+    sketchWrap.style.display = 'none';
+  }
+
   renderSection('cope-construction', d.construction, [
-    ['year_built','Year Built'], ['construction_type','Construction Type'],
-    ['stories','Stories'], ['total_sqft','Total Sq Ft'], ['living_area_sqft','Living Area Sq Ft'],
-    ['roof_shape','Roof Shape'], ['roof_material','Roof Material'],
-    ['foundation_type','Foundation Type'], ['exterior_walls','Exterior Walls'],
-    ['heating_type','Heating Type'], ['num_buildings','# Buildings'],
+    ['year_built',                   'Year Built'],
+    ['style',                        'Style'],
+    ['model',                        'Model'],
+    ['grade',                        'Grade'],
+    ['condition',                    'Condition'],
+    ['stories',                      'Stories'],
+    ['num_buildings',                '# Buildings'],
+    ['total_sqft',                   'Total Sq Ft'],
+    ['living_area_sqft',             'Living Area Sq Ft'],
+    ['replacement_cost',             'Replacement Cost',     fmtMoney],
+    ['replacement_cost_depreciated', 'Repl. Cost (Depr.)',   fmtMoney],
+    ['building_percent_good',        '% Good'],
+    ['exterior_wall_1',              'Exterior Wall 1'],
+    ['exterior_wall_2',              'Exterior Wall 2'],
+    ['roof_structure',               'Roof Structure'],
+    ['roof_cover',                   'Roof Cover'],
+    ['interior_wall_1',              'Interior Wall 1'],
+    ['interior_floor_1',             'Interior Floor 1'],
+    ['heat_fuel',                    'Heat Fuel'],
+    ['heat_type',                    'Heat Type'],
+    ['ac_type',                      'AC Type'],
+    ['fireplaces',                   'Fireplaces'],
+    ['foundation_type',              'Foundation Type'],
+    ['foundation_condition',         'Foundation Condition'],
+    ['basement',                     'Basement'],
   ]);
 
   renderSection('cope-occupancy', d.occupancy, [
-    ['use_code','Use Code'], ['use_description','Use Description'],
-    ['occupancy_class','Occupancy Class'], ['num_units','# Units'],
-    ['num_bedrooms','Bedrooms'], ['num_bathrooms','Bathrooms'],
-    ['assessed_value','Assessed Value', fmtMoney],
-    ['land_value','Land Value', fmtMoney],
-    ['building_value','Building Value', fmtMoney],
+    ['use_code',        'Use Code'],
+    ['use_description', 'Use Description'],
+    ['occupancy_class', 'Occupancy Class'],
+    ['num_units',       '# Units'],
+    ['num_bedrooms',    'Bedrooms'],
+    ['num_bathrooms',   'Full Baths'],
+    ['num_half_baths',  'Half Baths'],
+    ['num_rooms',       'Total Rooms'],
+    ['bath_style',      'Bath Style'],
+    ['kitchen_style',   'Kitchen Style'],
+    ['num_kitchens',    '# Kitchens'],
+  ]);
+
+  renderSection('cope-valuation', d.valuation, [
+    ['valuation_year', 'Valuation Year'],
+    ['assessed_value', 'Assessed Value', fmtMoney],
+    ['building_value', 'Building Value', fmtMoney],
+    ['land_value',     'Land Value',     fmtMoney],
+  ]);
+
+  // Owner & Sale combined
+  const ownerSaleData = { ...(d.owner || {}), ...(d.sale || {}) };
+  renderSection('cope-owner-sale', ownerSaleData, [
+    ['name',        'Owner'],
+    ['co_owner',    'Co-Owner'],
+    ['price',       'Sale Price',  fmtMoney],
+    ['date',        'Sale Date'],
+    ['code',        'Sale Code'],
+    ['book_page',   'Book & Page'],
+    ['certificate', 'Certificate'],
   ]);
 
   renderSection('cope-protection', d.protection, [
+    ['fire_district',       'Fire District'],
+    ['distance_to_station', 'Dist. to Station'],
+    ['sprinkler_system',    'Sprinklers'],
+    ['alarm_system',        'Alarm System'],
+    ['hydrant_proximity',   'Hydrant Proximity'],
+    ['protection_class',    'Protection Class'],
+  ]);
+
+  renderSection('cope-exposure', d.exposure, [
+    ['flood_zone',    'Flood Zone'],
+    ['lot_size_acres','Lot Size (Acres)'],
+    ['zoning_code',   'Zoning Code'],
+    ['neighborhood',  'Neighborhood'],
+    ['latitude',      'Latitude'],
+    ['longitude',     'Longitude'],
+  ]);
+
+  const panel = document.getElementById('result-panel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Image overlay ─────────────────────────────────────────
+function showImageOverlay(url, title) {
+  document.getElementById('img-overlay-img').src = url;
+  document.getElementById('img-overlay-title').textContent = title || '';
+  document.getElementById('img-overlay').classList.add('open');
+}
+
+function hideImageOverlay() {
+  document.getElementById('img-overlay').classList.remove('open');
+  document.getElementById('img-overlay-img').src = '';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') hideImageOverlay();
+});
+
+function toggleHistoryRow(rowId, summaryRow) {
+  const expandRow = document.getElementById(rowId);
+  const isOpen = expandRow.classList.contains('open');
+  // Close all others
+  document.querySelectorAll('.history-expand-row.open').forEach(r => r.classList.remove('open'));
+  document.querySelectorAll('.history-row.expanded').forEach(r => r.classList.remove('expanded'));
+  if (!isOpen) {
+    expandRow.classList.add('open');
+    summaryRow.classList.add('expanded');
+  }
+}
+
+function expandField(val, transform) {
+  if (val == null || val === '') return '<span class="expand-null">—</span>';
+  return escHtml(transform ? String(transform(val)).replace(/<[^>]+>/g,'') : String(val));
+}
+
+function buildExpandSection(title, colorClass, data, fields) {
+  const rows = fields.map(([key, label, transform]) => {
+    const raw = data ? data[key] : null;
+    const display = (raw == null || raw === '') ? '<span class="expand-null">—</span>' : escHtml(transform ? String(transform(raw)).replace(/<[^>]+>/g,'') : String(raw));
+    return `<div class="expand-field"><span class="expand-key">${label}</span><span class="expand-val">${display}</span></div>`;
+  }).join('');
+  return `<div class="${colorClass}"><div class="expand-section-title">${title}</div>${rows}</div>`;
+}
+
+function buildExpandHtml(d, idx) {
+  const construction = buildExpandSection('Construction', 'expand-c', d.construction, [
+    ['year_built','Year Built'], ['style','Style'], ['model','Model'], ['grade','Grade'],
+    ['condition','Condition'], ['stories','Stories'], ['num_buildings','# Buildings'],
+    ['total_sqft','Total Sq Ft'], ['living_area_sqft','Living Area Sq Ft'],
+    ['replacement_cost','Replacement Cost', fmtMoney],
+    ['replacement_cost_depreciated','Repl. Cost (Depr.)', fmtMoney],
+    ['building_percent_good','% Good'],
+    ['exterior_wall_1','Exterior Wall 1'], ['exterior_wall_2','Exterior Wall 2'],
+    ['roof_structure','Roof Structure'], ['roof_cover','Roof Cover'],
+    ['interior_wall_1','Interior Wall 1'], ['interior_floor_1','Interior Floor 1'],
+    ['heat_fuel','Heat Fuel'], ['heat_type','Heat Type'], ['ac_type','AC Type'],
+    ['fireplaces','Fireplaces'], ['foundation_type','Foundation Type'],
+    ['foundation_condition','Foundation Condition'], ['basement','Basement'],
+  ]);
+  const occupancy = buildExpandSection('Occupancy', 'expand-o', d.occupancy, [
+    ['use_code','Use Code'], ['use_description','Use Description'],
+    ['occupancy_class','Occupancy Class'], ['num_units','# Units'],
+    ['num_bedrooms','Bedrooms'], ['num_bathrooms','Full Baths'], ['num_half_baths','Half Baths'],
+    ['num_rooms','Total Rooms'], ['bath_style','Bath Style'],
+    ['kitchen_style','Kitchen Style'], ['num_kitchens','# Kitchens'],
+  ]);
+  const valuation = buildExpandSection('Valuation', 'expand-v', d.valuation, [
+    ['valuation_year','Valuation Year'],
+    ['assessed_value','Assessed Value', fmtMoney],
+    ['building_value','Building Value', fmtMoney],
+    ['land_value','Land Value', fmtMoney],
+  ]);
+  const ownerSale = buildExpandSection('Owner & Sale', 'expand-s', {...(d.owner||{}), ...(d.sale||{})}, [
+    ['name','Owner'], ['co_owner','Co-Owner'],
+    ['price','Sale Price', fmtMoney], ['date','Sale Date'],
+    ['code','Sale Code'], ['book_page','Book & Page'], ['certificate','Certificate'],
+  ]);
+  const protection = buildExpandSection('Protection', 'expand-p', d.protection, [
     ['fire_district','Fire District'], ['distance_to_station','Dist. to Station'],
     ['sprinkler_system','Sprinklers'], ['alarm_system','Alarm System'],
     ['hydrant_proximity','Hydrant Proximity'], ['protection_class','Protection Class'],
   ]);
-
-  renderSection('cope-exposure', d.exposure, [
-    ['flood_zone','Flood Zone'], ['lot_size','Lot Size'],
+  const exposure = buildExpandSection('Exposure', 'expand-e', d.exposure, [
+    ['flood_zone','Flood Zone'], ['lot_size_acres','Lot Size (Acres)'],
     ['zoning_code','Zoning Code'], ['neighborhood','Neighborhood'],
     ['latitude','Latitude'], ['longitude','Longitude'],
   ]);
 
-  document.getElementById('result-panel').style.display = '';
+  const parcel = d.parcel_id ? `Parcel: ${escHtml(d.parcel_id)}` : '';
+  const sourceLink = d.data_source_url ? `<a href="${escHtml(d.data_source_url)}" target="_blank" class="source-link">View source ↗</a>` : '';
+  const notes = d.notes ? `<div style="font-size:.8rem;color:var(--yellow);margin-top:.25rem">${escHtml(d.notes)}</div>` : '';
+  const error = d.error ? `<div style="font-size:.8rem;color:var(--red);margin-top:.25rem">${escHtml(d.error)}</div>` : '';
+
+  const photoLink = d.photo_url
+    ? `<a class="img-thumb-link" onclick="showHistoryImage(${idx},'photo')">📷 Photo</a>`
+    : '';
+  const sketchLink = d.sketch_url
+    ? `<a class="img-thumb-link" onclick="showHistoryImage(${idx},'sketch')">📐 Sketch</a>`
+    : '';
+  const imageLinks = (photoLink || sketchLink)
+    ? `<div style="display:flex;gap:.5rem;margin-top:.75rem">${photoLink}${sketchLink}</div>` : '';
+
+  return `<div class="expand-inner">
+    <div class="expand-grid">${construction}${occupancy}${valuation}${ownerSale}${protection}${exposure}</div>
+    ${imageLinks}
+    <div class="expand-footer">
+      <div style="font-size:.8rem;color:var(--gray-500)">${parcel}${notes}${error}</div>
+      ${sourceLink}
+    </div>
+  </div>`;
 }
 
 // ── History ───────────────────────────────────────────────
@@ -659,26 +935,44 @@ async function loadHistory() {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     const data = await r.json();
+    _historyData = data;
     const tbody = document.getElementById('history-tbody');
     if (!data.length) {
       tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">No searches yet</div></td></tr>';
       return;
     }
-    tbody.innerHTML = data.map(d => {
+    tbody.innerHTML = data.map((d, i) => {
       const date = d.search_timestamp ? new Date(d.search_timestamp).toLocaleDateString() : '—';
       const exp = d.cache_expires_at ? new Date(d.cache_expires_at).toLocaleDateString() : '—';
-      return `<tr>
-        <td>${escHtml(d.search_address)}</td>
-        <td>${escHtml(d.municipality_id || '—')}</td>
-        <td>${d.completeness_pct != null ? d.completeness_pct + '%' : '—'}</td>
+      const muni = escHtml(d.municipality_display || '—');
+      const pct = d.completeness_pct != null ? d.completeness_pct + '%' : '—';
+      const rowId = `hist-expand-${i}`;
+      const imgIcons = [
+        d.photo_url ? `<a class="img-thumb-link" style="padding:.1rem .35rem;font-size:.7rem" onclick="event.stopPropagation();showHistoryImage(${i},'photo')" title="Property Photo">📷</a>` : '',
+        d.sketch_url ? `<a class="img-thumb-link" style="padding:.1rem .35rem;font-size:.7rem" onclick="event.stopPropagation();showHistoryImage(${i},'sketch')" title="Building Sketch">📐</a>` : '',
+      ].join('');
+      return `<tr class="history-row" onclick="toggleHistoryRow('${rowId}', this)">
+        <td><i class="chevron">›</i>${escHtml(d.search_address)}</td>
+        <td>${muni}</td>
+        <td>${pct}</td>
         <td>${date}</td>
         <td>${exp}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteProperty('${d._id}', this)">Delete</button></td>
+        <td onclick="event.stopPropagation()" style="white-space:nowrap"><span style="display:inline-flex;gap:.25rem;margin-right:.5rem">${imgIcons}</span><button class="btn btn-danger btn-sm" onclick="deleteProperty('${d._id}', this)">Delete</button></td>
+      </tr>
+      <tr class="history-expand-row" id="${rowId}">
+        <td colspan="6">${buildExpandHtml(d, i)}</td>
       </tr>`;
     }).join('');
   } catch (e) {
     console.error(e);
   }
+}
+
+function showHistoryImage(idx, type) {
+  const d = _historyData[idx];
+  if (!d) return;
+  if (type === 'photo' && d.photo_url) showImageOverlay(d.photo_url, 'Property Photo');
+  if (type === 'sketch' && d.sketch_url) showImageOverlay(d.sketch_url, 'Building Sketch');
 }
 
 async function deleteProperty(id, btn) {
