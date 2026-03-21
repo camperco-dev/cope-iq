@@ -6,11 +6,14 @@ If found, the municipality is inserted into MongoDB and the doc is returned so
 the calling router can proceed immediately without a second lookup.
 
 Discovery order:
-  1. VGSI  — https://gis.vgsi.com/{municipality_nospaces}{state_lower}/
-  2. qPublic — https://qpublic.schneidercorp.com/Application.aspx?App={county}County{state}
+  1. VGSI    — fast httpx probe of https://gis.vgsi.com/{municipality}{state}/
+  2. qPublic — headless Playwright browser navigates qpublic.schneidercorp.com,
+               selects the state/county dropdowns, and captures the Property Search
+               URL (including county-specific numeric AppID/LayerID/PageID).
+               Falls back to a basic httpx probe only if Playwright is not installed.
 
-Adding support for a new platform: implement a `_probe_<name>` coroutine with the
-same signature as the existing probes and append a call to it in `discover_and_register`.
+Adding support for a new platform: implement a `_probe_<name>` coroutine and call
+it in `discover_and_register`.
 """
 
 import re
@@ -56,40 +59,68 @@ async def _probe_vgsi(
     return None
 
 
-async def _probe_qpublic(
-    locality: str, state: str, county: str, client: httpx.AsyncClient
-) -> dict | None:
+async def _probe_qpublic(locality: str, state: str, county: str) -> dict | None:
     """
-    Probe https://qpublic.schneidercorp.com/Application.aspx?App={county}County{state}.
+    Discover a qPublic county using a headless Playwright browser.
 
-    Requires county (from geocoding). Skipped if county is empty.
+    Navigates qpublic.schneidercorp.com, selects state/county from the UI
+    dropdowns, and captures the Property Search URL (PageTypeID=2) which
+    contains the county-specific numeric AppID, LayerID, and PageID.
+
+    Falls back to a basic httpx validity check when Playwright is not installed,
+    but that check is unreliable because Cloudflare blocks plain HTTP clients.
     """
     if not county:
         return None
 
     county_slug = re.sub(r"[^a-zA-Z0-9]", "", county)
     app_id = f"{county_slug}County{state.upper()}"
+    muni_name = f"{county.lower()} county"
+    muni_base = {
+        "state": state.upper(),
+        "county": county.title(),
+        "municipality": muni_name,
+        "municipality_display": f"{county.title()} County",
+        "search_url": _QPUBLIC_BASE,
+        "search_type": "qpublic",
+        "active": True,
+    }
+
+    # ── Playwright path (preferred) ───────────────────────────────────────────
+    try:
+        from scraper.qpublic_browser import get_property_search_url
+        search_page_url = await get_property_search_url(state, county)
+        if search_page_url:
+            print(f"[discovery] qPublic browser probe hit → {search_page_url}")
+            return {
+                **muni_base,
+                "platform_config": {
+                    "app_id": app_id,
+                    "layer_id": "Parcels",
+                    "search_page_url": search_page_url,
+                },
+            }
+        print(f"[discovery] qPublic browser probe: county not found on site")
+        return None
+    except ImportError:
+        pass
+
+    # ── httpx fallback (Playwright not installed) ─────────────────────────────
+    # Cloudflare blocks most requests; treat any non-403 as a tentative hit.
     url = f"{_QPUBLIC_BASE}/Application.aspx?App={app_id}"
     try:
-        r = await client.get(url, follow_redirects=True, timeout=10.0)
-        if r.status_code == 200:
-            text = r.text.lower()
-            if "schneidercorp" in text or "qpublic" in text:
-                muni_name = f"{county.lower()} county"
-                print(f"[discovery] qPublic probe hit → {url} (app_id={app_id})")
-                return {
-                    "state": state.upper(),
-                    "county": county.title(),
-                    "municipality": muni_name,
-                    "municipality_display": f"{county.title()} County",
-                    "search_url": _QPUBLIC_BASE,
-                    "search_type": "qpublic",
-                    "platform_config": {"app_id": app_id, "layer_id": "Parcels"},
-                    "active": True,
-                }
-        print(f"[discovery] qPublic probe miss ({r.status_code}) → {url}")
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            r = await client.get(url, follow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200 and ("schneidercorp" in r.text.lower() or "qpublic" in r.text.lower()):
+            print(f"[discovery] qPublic httpx fallback probe hit → {url}")
+            return {
+                **muni_base,
+                "platform_config": {"app_id": app_id, "layer_id": "Parcels"},
+            }
+        print(f"[discovery] qPublic httpx fallback probe miss ({r.status_code}) → {url}")
     except httpx.HTTPError as exc:
-        print(f"[discovery] qPublic probe error → {url}: {exc}")
+        print(f"[discovery] qPublic httpx fallback probe error → {url}: {exc}")
     return None
 
 
@@ -109,8 +140,8 @@ async def discover_and_register(
     """
     async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
         muni = await _probe_vgsi(locality, state, client)
-        if muni is None:
-            muni = await _probe_qpublic(locality, state, county, client)
+    if muni is None:
+        muni = await _probe_qpublic(locality, state, county)
 
     if muni is None:
         print(f"[discovery] no platform found for {locality!r}, {state!r}")

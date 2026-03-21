@@ -65,6 +65,7 @@ cope-iq/
 ├── scraper/
 │   ├── cope_scraper.py        ← dispatcher: registry lookup, shared client, Claude call
 │   ├── discovery.py           ← auto-discovery: probe platforms, register unknown municipalities
+│   ├── qpublic_browser.py     ← headless Playwright browser: navigates qPublic state/county UI
 │   ├── prompts.py             ← SYSTEM_PROMPT + extraction_prompt() template
 │   └── platforms/
 │       ├── __init__.py        ← PLATFORM_REGISTRY dict
@@ -103,7 +104,8 @@ cd cope-iq
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env   # then fill in your real keys
+playwright install chromium   # download Chromium for headless qPublic browser
+copy .env.example .env        # then fill in your real keys
 .\start.bat
 ```
 
@@ -253,13 +255,19 @@ Four-step flow:
 - `extract_photo_url()` checks `/photos/`, `/images/`, `/parcel/` paths, then `alt="photo"`, then any `.jpg`/`.png` not matching UI asset patterns
 - `extraction_hints()` injects qPublic-specific field label mappings into the Claude prompt
 
-**Known limitation:** Schneider Corp's CDN returns 403 for non-browser User-Agents on
-the search form endpoint. Full end-to-end requires either a session cookie warm-up or
-a less-restricted network path. Flagged as a TODO for a future PR.
+**Cloudflare / CDN:** Schneider Corp's CDN returns 403 for plain HTTP clients. All
+automated interaction with qPublic now goes through a headless Playwright Chromium
+browser (`scraper/qpublic_browser.py`), which passes the Cloudflare managed challenge.
 
 **Required `platform_config` keys:**
 - `app_id` (str) — the `App=` parameter from the site URL, e.g. `"BryanCountyGA"`
-- `layer_id` (str, optional) — defaults to `"Parcels"`
+
+**Optional `platform_config` keys:**
+- `layer_id` (str) — defaults to `"Parcels"`
+- `search_page_url` (str) — full URL to the county's address search form, containing
+  numeric IDs (`AppID=`, `LayerID=`, `PageTypeID=2`, `PageID=`). Populated automatically
+  by `scraper/qpublic_browser.py` during discovery or via `POST /api/admin/enrich-qpublic`.
+  Without it, the scraper falls back to `Application.aspx?App={app_id}&PageTypeID=2`.
 
 ---
 
@@ -339,7 +347,8 @@ server, and hit `POST /admin/seed`.
 - [x] Municipality auto-discovery (`scraper/discovery.py`) — unknown municipalities probed and registered on first search
 - [x] `_geocode()` returns county for qPublic discovery
 - [x] Augusta, ME added to seed data
-- [ ] Resolve qPublic 403 (session cookie warm-up or User-Agent rotation)
+- [x] Headless Playwright browser for qPublic (`scraper/qpublic_browser.py`) — bypasses Cloudflare, navigates state/county UI, captures Property Search URL with numeric IDs
+- [x] `POST /api/admin/enrich-qpublic` — backfills `search_page_url` for existing qPublic municipalities
 - [ ] Add Patriot Properties scraper strategy (`search_type: patriot`)
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
 - [ ] Expand VGSI seed data to NH, VT, MA municipalities

@@ -28,8 +28,15 @@ class QPublicPlatform(PropertyPlatform):
                          E.g. "SCGovtBryanGA".
 
     Optional platform_config keys:
-        layer_id (str):  Defaults to "Parcels". Override if the municipality uses
-                         a different layer name (visible in the site URLs).
+        layer_id (str):         Defaults to "Parcels".
+        search_page_url (str):  Full URL to the county's address search form page.
+                                Find it by visiting qpublic.schneidercorp.com, selecting
+                                the county, and copying the "Property Search" link URL.
+                                Example: https://qpublic.schneidercorp.com/Application.aspx
+                                         ?AppID=1223&LayerID=37300&PageTypeID=2&PageID=14257
+                                When provided, bypasses URL construction entirely and GETs
+                                this URL directly for the search form. Strongly recommended —
+                                the auto-constructed URL may land on the wrong page type.
     """
 
     # Base URL shared by all Schneider deployments.
@@ -74,7 +81,14 @@ class QPublicPlatform(PropertyPlatform):
         query = street or address.split(",")[0].strip()
         print(f"[qpublic] app_id={app_id!r}  query={query!r}")
 
-        search_url = f"{self._HOST}/Application.aspx?App={app_id}&Layer={layer_id}&PageType=Search"
+        # Prefer an explicit search page URL from platform_config — the auto-constructed
+        # URL using only the string app_id can land on the GIS map view rather than the
+        # address search form. The correct URL uses numeric IDs (AppID, LayerID, PageTypeID=2,
+        # PageID) that are county-specific and must be copied from the live site.
+        search_url = (
+            platform_config.get("search_page_url")
+            or f"{self._HOST}/Application.aspx?App={app_id}&PageTypeID=2"
+        )
 
         # ── Step 1: GET the search form and capture ASP.NET tokens ──────────
         print(f"[qpublic] GET search form: {search_url}")
