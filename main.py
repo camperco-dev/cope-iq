@@ -1,3 +1,27 @@
+# ── Windows / OpenSSL 3.0 TLS 1.3 compatibility fix ──────────────────────────
+# Python 3.11 on Windows ships OpenSSL 3.0 whose TLS 1.3 handshake is
+# incompatible with some MongoDB Atlas shard configurations (internal_error).
+# pymongo 4.x does not expose ssl_context, so we patch get_ssl_context() in
+# pymongo.ssl_support — the single point where pymongo creates its SSL context.
+# We append OP_NO_TLSv1_3 to force TLS 1.2 for all MongoDB connections.
+# Patching at this level avoids the recursive ssl.py property setter issue that
+# occurs when ssl.SSLContext itself is replaced.
+import pymongo.ssl_support as _pymongo_ssl_support
+_OP_NO_TLSv1_3 = 0x20000000  # OpenSSL SSL_OP_NO_TLSv1_3
+_orig_get_ssl_context = _pymongo_ssl_support.get_ssl_context
+
+def _get_ssl_context_tls12(*args, **kwargs):
+    ctx = _orig_get_ssl_context(*args, **kwargs)
+    if ctx is not None:
+        try:
+            ctx.options |= _OP_NO_TLSv1_3
+        except (AttributeError, OSError):
+            pass
+    return ctx
+
+_pymongo_ssl_support.get_ssl_context = _get_ssl_context_tls12
+# ─────────────────────────────────────────────────────────────────────────────
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
