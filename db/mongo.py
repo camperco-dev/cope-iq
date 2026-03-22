@@ -226,8 +226,32 @@ async def ensure_indexes():
 
 
 async def seed_municipalities():
-    """Insert seed data if collection is empty."""
-    count = await municipalities().count_documents({})
-    if count == 0:
-        docs = [dict(m, date_added=datetime.now(timezone.utc), added_by="seed") for m in SEED_MUNICIPALITIES]
-        await municipalities().insert_many(docs)
+    """Upsert seed municipalities by (state, municipality) key.
+
+    Runs on every startup so platform corrections in SEED_MUNICIPALITIES
+    (e.g. search_type / search_url changes) propagate to existing databases
+    without requiring a collection drop.
+
+    ``platform_config`` is only written on insert to preserve admin-enriched
+    fields such as qPublic ``search_page_url`` values added via admin tooling.
+    """
+    now = datetime.now(timezone.utc)
+    for m in SEED_MUNICIPALITIES:
+        await municipalities().update_one(
+            {"state": m["state"], "municipality": m["municipality"]},
+            {
+                "$set": {
+                    "county": m.get("county", ""),
+                    "municipality_display": m["municipality_display"],
+                    "search_url": m["search_url"],
+                    "search_type": m["search_type"],
+                    "active": m.get("active", True),
+                    "added_by": "seed",
+                },
+                "$setOnInsert": {
+                    "date_added": now,
+                    "platform_config": m.get("platform_config", {}),
+                },
+            },
+            upsert=True,
+        )
