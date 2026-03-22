@@ -15,9 +15,14 @@ A user enters a street address. The app:
 5. Passes the raw property card text to Claude (claude-sonnet-4-5) for structured extraction
 6. Returns a structured COPE report and caches it for 30 days per user
 
-Supported platforms: **VGSI** (Maine municipalities) and **qPublic / Schneider Corp**
-(GA, SC, FL counties). New platforms are added by implementing `PropertyPlatform` and
-registering the class in `PLATFORM_REGISTRY` — no changes to the dispatcher or router.
+Supported platforms: **VGSI** (Maine municipalities), **qPublic / Schneider Corp**
+(GA, SC, FL counties), **O'Donnell & Associates** (37 Maine municipalities — ownership
+and valuation data only), **Patriot Properties WebPro** (New England municipalities —
+full COPE data), **Tyler Technologies iasWorld** (hundreds of US municipalities —
+full COPE data), and **Harris Computer Systems RE Online** (rural New England
+municipalities — full COPE data). New platforms are added by implementing
+`PropertyPlatform` and registering the class in `PLATFORM_REGISTRY` — no changes to
+the dispatcher or router.
 
 ---
 
@@ -71,7 +76,11 @@ cope-iq/
 │       ├── __init__.py        ← PLATFORM_REGISTRY dict
 │       ├── base.py            ← PropertyPlatform abstract base class
 │       ├── vgsi.py            ← VGSIPlatform (Maine municipalities)
-│       └── qpublic.py         ← QPublicPlatform (Schneider Corp / GA, SC, FL)
+│       ├── qpublic.py         ← QPublicPlatform (Schneider Corp / GA, SC, FL)
+│       ├── odonnell.py        ← OdonnellPlatform (O'Donnell & Assoc. / 37 ME towns)
+│       ├── patriot.py         ← PatriotPlatform (Patriot Properties WebPro / New England)
+│       ├── tyler.py           ← TylerPlatform (Tyler Technologies iasWorld / nationwide)
+│       └── harris.py          ← HarrisPlatform (Harris Computer Systems RE Online / rural NE)
 ├── models/
 │   ├── municipality.py        ← Pydantic municipality doc model (incl. platform_config)
 │   └── property.py            ← Pydantic COPE result doc model
@@ -174,6 +183,10 @@ touching the dispatcher or any router.
 | `scraper/platforms/base.py` | `PropertyPlatform` ABC — defines the interface all platforms must satisfy |
 | `scraper/platforms/vgsi.py` | `VGSIPlatform` — VGSI two-step HTTP scraper |
 | `scraper/platforms/qpublic.py` | `QPublicPlatform` — Schneider Corp GET→POST→parse flow |
+| `scraper/platforms/odonnell.py` | `OdonnellPlatform` — O'Donnell JSON dataset extraction |
+| `scraper/platforms/patriot.py` | `PatriotPlatform` — Patriot WebPro 3-step session flow |
+| `scraper/platforms/tyler.py` | `TylerPlatform` — Tyler iasWorld 5-step session flow |
+| `scraper/platforms/harris.py` | `HarrisPlatform` — Harris RE Online 3-step form flow |
 | `scraper/platforms/__init__.py` | `PLATFORM_REGISTRY` dict mapping `search_type` → platform instance |
 | `scraper/cope_scraper.py` | Dispatcher — looks up platform, owns `httpx.AsyncClient`, calls Claude |
 
@@ -276,6 +289,177 @@ display required — the Dockerfile installs `xvfb` and starts it as `Xvfb :99` 
 
 ---
 
+## O'Donnell & Associates Platform
+
+John E. O'Donnell & Associates (`jeodonnell.com/cama/`) serves 37+ Maine municipalities
+through a WordPress site running the custom `jeo-cama` plugin.
+
+**Data availability:** Ownership and financial assessment data only. Construction details
+(year built, square footage, construction type, stories, roof, foundation, heating) are
+**not published online** — those COPE fields will always be null for O'Donnell properties.
+Expected completeness: ~30–40%.
+
+**Available fields:** Parcel ID (Map-Lot format), owner name, street address, assessed land
+value, assessed building value, last sale price, last sale date.
+
+**Scraping flow (single HTTP request — no browser automation):**
+
+1. `GET https://jeodonnell.com/cama/{slug}/`
+2. Extract `script_vars.dataSet` JSON array from `<script id="jeo-cama-js-extra">` inline block
+3. Match parcel by normalised `StreetNumber + StreetName`; partial fallback on house number + street prefix
+4. Build synthetic HTML property card table for Claude extraction
+5. Return `(Key, matched_address, html, parcel_url)`
+
+**Dataset structure:** Each record in `dataSet` contains:
+`Key` (Map-Lot), `OwnerName1`, `StreetNumber`, `StreetName`, `LandValue`, `BuildingValue`,
+`BoughtFor`, `OwnerSince`, `PrivateData` (skip when `"1"`).
+
+**Required `platform_config` keys:**
+- `slug` (str) — URL path segment, e.g. `"turner"`, `"livermore-falls"`
+
+**Individual parcel URLs** (`/cama/{slug}/{Key}/`) are client-side JavaScript routing only —
+the server returns the full municipality page for every sub-path. Scraping does not use them.
+
+**Auto-discovery probe:** `_probe_odonnell()` in `scraper/discovery.py` — only probes for
+`state == "ME"`; slug derived by replacing spaces/punctuation with hyphens.
+
+---
+
+## Patriot Properties Platform
+
+Patriot Properties WebPro (`*.patriotproperties.com`) is a Classic ASP frameset application
+used by hundreds of New England municipalities (ME, NH, MA, RI, CT).
+
+**Data availability:** Full COPE data — year built, exterior material, roof cover, rooms,
+bedrooms, baths, land area, land/building/total values, and sale history. Photo
+(`showimage.asp`) and building sketch (`showsketch.asp`) are session-relative URLs.
+
+**Scraping flow (3 HTTP requests, session cookies required):**
+
+1. **POST** `SearchResults.asp` — search by house number + first word of street name
+2. **GET** `Summary.asp?AccountNumber={id}` — load parcel into server-side ASP session
+3. **GET** `summary-bottom.asp` — retrieve the full property card HTML
+
+**Street name search quirk:** Patriot stores abbreviated street types ("OAK ST" not "OAK
+STREET"). The server uses "Starts With" comparison, so sending "Oak Street" fails to match
+"OAK ST". Fix: only the first word of the street name is sent to the server; `_street_match()`
+handles type-suffix matching on the client side using word-level prefix comparison (e.g.
+"street" matches "st", "lane" matches "ln").
+
+**Address cell format:** SearchResults.asp TD[1] contains house number + street name
+separated by `\xa0` (non-breaking space) — e.g. `1\xa0OAK ST`. `split(None, 1)` handles
+this correctly.
+
+**Photo and sketch detection:**
+- `extract_photo_url()`: returns `{base_url}/showimage.asp` if `showimage.asp` appears in HTML
+  and `nopic.jpg` sentinel is absent.
+- `extract_sketch_url()`: returns `{base_url}/showsketch.asp` if `showsketch.asp` appears in HTML
+  and `nosketch.jpg` sentinel is absent.
+- Both URLs are valid only while the httpx client's ASP session cookie remains alive.
+
+**Required `platform_config` keys:** none — `base_url` (the `search_url` field) carries
+all state; e.g. `https://auburnmaine.patriotproperties.com`.
+
+**Slug variants tried by auto-discovery probe:**
+1. `{locality_lower_nospaces}` — e.g. "auburn" → `auburn.patriotproperties.com`
+2. `{locality_lower_nospaces}{state_lower}` — e.g. "auburnme" → `auburnme.patriotproperties.com`
+3. `{locality_lower_nospaces}maine` — e.g. "auburnmaine" → `auburnmaine.patriotproperties.com`
+
+Note: Auburn ME uses the unusual `auburnmaine` slug (not `auburnme`), which redirects to a
+marketing page — this is handled by trying the `{name}maine` variant for ME.
+
+**Auto-discovery probe:** `_probe_patriot()` in `scraper/discovery.py` — tries slug variants
+in order, confirms hit by checking for `SearchStreetName` form field marker.
+
+---
+
+## Tyler Technologies Platform
+
+Tyler Technologies iasWorld Public Access (`*.tylertech.com`, `*.tylerhost.net`, and custom
+domains) is used by hundreds of municipalities across the US (ME, OH, VA, LA, and more).
+
+**Data availability:** Full COPE data — year built, building style, stories, heating system,
+fuel type, rooms, bedrooms, baths, living area, land/building/total values, and sale history.
+
+**Scraping flow (5 HTTP requests, ASP.NET session cookies required):**
+
+1. **GET** `search/commonsearch.aspx?mode=address` — may redirect to Disclaimer.aspx
+2. **POST** Disclaimer.aspx with `btAgree=Agree` — accepts ToS, sets session cookie
+   (skipped if already accepted in the current session)
+3. **POST** `search/commonsearch.aspx?mode=address` — search by house number + first word
+   of street name
+4a. **302** → single result → server redirects to `Datalets/Datalet.aspx?sIndex=N&idx=M`
+4b. **200** → results list → parse `TR[onclick]` rows to find match, extract detail URL
+5. **GET** 4 datalet tabs (profileall, res_combined, valuesall, sales) — concatenated into
+   one HTML block separated by `<!-- DATALET BREAK -->` comments
+
+**Results list structure:** Each `TR[onclick]` row has onclick handler:
+`selectSearchRow('../Datalets/Datalet.aspx?sIndex=0&idx=N')`.
+Columns: `[PARID, Map/Lot, Address, Owner, ...]` — address is at column index 2.
+
+**Street name search quirk:** Same as Patriot — Tyler uses "Starts With" server-side
+matching. Only the first word of the street name is sent; `_street_match()` handles
+type-suffix matching on the client side.
+
+**Disclaimer handling:** Tyler sites show a Terms of Use disclaimer on first visit.
+Detected by presence of `btAgree` in the page HTML. Accepted by POSTing `btAgree=Agree`
+along with all hidden form fields (`__VIEWSTATE`, `__VIEWSTATEGENERATOR`,
+`__EVENTVALIDATION`, `hdURL`, `action`).
+
+**Datalet tabs:**
+- `profileall` — Parcel ID, Map/Lot, Property Location, Property Class, Land Area, Owner
+- `res_combined` — Year Built, Style, Stories, Heat System, Fuel Type, Rooms, Baths,
+  Living Area, Basement, Attic, Fireplaces
+- `valuesall` — Current Land, Current Building, Current Assessed Total
+- `sales` — Deed Date, Sale Price, Grantor (seller)
+
+**Required `platform_config` keys:** none — `base_url` (the `search_url` field) carries
+all state; e.g. `https://lewistonmaine.tylertech.com`.
+
+**Slug variants tried by auto-discovery probe:**
+1. `{locality_lower_nospaces}{state_lower}` — e.g. "lewistonme" → `lewistonme.tylertech.com`
+2. `{locality_lower_nospaces}` — e.g. "lewiston" → `lewiston.tylertech.com`
+3. `{locality_lower_nospaces}maine` — ME only (e.g. "lewistonmaine") — Lewiston ME uses this
+
+**Auto-discovery probe:** `_probe_tyler()` in `scraper/discovery.py` — confirms hit by
+checking for `frmMain` form marker or `btAgree` disclaimer marker.
+
+---
+
+## Harris Computer Systems Platform
+
+Harris Computer Systems RE Online (`reonline.harriscomputer.com`) is used by rural New
+England municipalities. Each municipality has an opaque numeric `clientid` embedded in
+the search URL (e.g. `?clientid=1007` for Readfield ME).
+
+**Data availability:** Full COPE data — year built, building style, rooms, bedrooms,
+baths, living area, land/building/taxable values, and sale history. Heating and exterior
+are not published. No photos or sketches.
+
+**Scraping flow (3 HTTP requests):**
+
+1. **GET** `research.aspx?clientid={id}` — fetch search form and ASP.NET VIEWSTATE
+2. **POST** `research.aspx?clientid={id}` with `txtDetailStreet` = first word of street
+   name → results page at `REDetailList.aspx`
+3. **GET** `DetailedView.aspx?id={account}` — full property card
+
+**Results table structure** (`REDetailList.aspx`):
+Rows identified by `td a[href*="DetailedView"]` in first cell.
+Columns: `[View link | Account | Map/Lot | Name | Acres | Land | Building | ST No | Street]`
+— ST No (index 7) is the house number; Street (index 8) is the street name.
+
+**clientid registry:** Harris client IDs are opaque integers — not derivable from the
+locality name. Known IDs are stored in `_HARRIS_CLIENTS` in `scraper/discovery.py`.
+Auto-discovery for unknown municipalities returns None; new municipalities must be
+seeded manually with their known clientid in `search_url`.
+
+**Required `platform_config` keys:** none — clientid is embedded in `search_url`.
+
+**Auto-discovery probe:** `_probe_harris()` in `scraper/discovery.py` — looks up the
+locality in `_HARRIS_CLIENTS`; returns None for unknown municipalities.
+
+---
+
 ## Municipality Auto-Discovery
 
 `scraper/discovery.py` — `discover_and_register(locality, state, county) -> dict | None`
@@ -288,7 +472,23 @@ before returning an error. It probes each supported platform in order:
    built by stripping non-alphanumeric characters from the locality name and appending the
    lowercase state code (e.g. Augusta ME → `augustame`).
 
-2. **qPublic** — GETs `https://qpublic.schneidercorp.com/Application.aspx?App={county}County{state}`
+2. **O'Donnell** — GETs `https://jeodonnell.com/cama/{slug}/` where slug is the locality
+   name lowercased with spaces replaced by hyphens (e.g. "Livermore Falls" → `livermore-falls`).
+   Checks for the `jeo-cama-js-extra` script marker. Only probes when `state == "ME"`.
+
+3. **Patriot Properties** — Tries slug variants in order: `{name}`, `{name}{state}`,
+   `{name}maine` (ME only). GETs `{slug}.patriotproperties.com/search-middle-ns.asp` and
+   checks for the `SearchStreetName` form field marker. Covers ME, NH, MA, RI, CT.
+
+4. **Tyler Technologies** — Tries slug variants: `{name}{state}`, `{name}`,
+   `{name}maine` (ME only). GETs `{slug}.tylertech.com/search/commonsearch.aspx?mode=address`
+   and checks for `frmMain` marker or `btAgree` disclaimer marker.
+
+5. **Harris Computer Systems** — Looks up locality in `_HARRIS_CLIENTS` dict (pre-seeded
+   clientid registry). GETs `reonline.harriscomputer.com/research.aspx?clientid={id}` and
+   checks for `Harris RE Online Search` page marker. Returns None for unknown municipalities.
+
+6. **qPublic** — GETs `https://qpublic.schneidercorp.com/Application.aspx?App={county}County{state}`
    and checks for Schneider Corp content. Requires `county` from geocoding. Skipped if county
    is empty. Subject to the same 403 CDN limitation as the scraper itself.
 
@@ -308,7 +508,15 @@ path) are present on every VGSI municipality's root page.
 ## Seeded Municipalities
 
 ### VGSI — Maine
-Rockland, Camden, Belfast, Portland, Bangor, Biddeford, Saco, Auburn, Lewiston, Bath, Augusta
+**Androscoggin:** Auburn, Lewiston, Sabattus
+**Cumberland:** Baldwin, Brunswick, Casco, Cumberland, Falmouth, Freeport, Gorham, Harpswell, North Yarmouth, Portland, Raymond, Scarborough, South Portland, Standish, Westbrook, Windham, Yarmouth
+**Hancock:** Mount Desert
+**Kennebec:** Augusta, Gardiner, Monmouth, Waterville, Winslow, Winthrop
+**Knox:** Camden, Rockland, South Thomaston
+**Penobscot:** Bangor, Orono
+**Sagadahoc:** Bath, Topsham
+**Waldo:** Belfast
+**York:** Arundel, Berwick, Biddeford, Eliot, Kennebunk, Kittery, Ogunquit, Saco, Wells, York
 
 ### qPublic — Georgia
 Bryan County (`BryanCountyGA`), Haralson County (`HaralsonCountyGA`), Polk County (`PolkCountyGA`)
@@ -318,6 +526,24 @@ Spartanburg County (`SpartanburgCountySC`), Lancaster County (`LancasterCountySC
 
 ### qPublic — Florida
 Okaloosa County (`OkaloosaCountyFL`)
+
+### O'Donnell & Associates — Maine
+**Androscoggin:** Livermore, Livermore Falls, Mechanic Falls, Minot, Turner, Wales
+**Cumberland:** Bridgton, Naples, New Gloucester, Sebago
+**Franklin:** Andover, Carthage, Jay, Temple, Weld, Wilton
+**Lincoln:** Alna, Boothbay, Edgecomb
+**Oxford:** Canton, Dixfield, Gilead, Greenwood, Hanover, Hartford, Hebron, Otisfield, Stow, Sumner, Sweden, Woodstock
+**York:** Acton, Alfred, Lebanon, Limerick, Shapleigh
+
+### Patriot Properties WebPro — Maine
+**Androscoggin:** Auburn (`auburnmaine.patriotproperties.com`)
+**Knox:** Rockport (`rockport.patriotproperties.com`)
+
+### Tyler Technologies iasWorld — Maine
+**Androscoggin:** Lewiston (`lewistonmaine.tylertech.com`)
+
+### Harris Computer Systems RE Online — Maine
+**Kennebec:** Readfield (`clientid=1007`)
 
 To re-seed a dev environment: drop the `municipalities` collection in Atlas, restart the
 server, and hit `POST /admin/seed`.
@@ -355,10 +581,15 @@ server, and hit `POST /admin/seed`.
 - [x] Playwright browser for qPublic (`scraper/qpublic_browser.py`) — bypasses Cloudflare, navigates state/county UI, captures Property Search URL with numeric IDs
 - [x] `POST /api/admin/enrich-qpublic` — backfills `search_page_url` for existing qPublic municipalities
 - [x] qPublic property scraping via `scrape_property_search()` — non-headless Chromium bypasses Cloudflare Turnstile; results extracted from PageTypeID=3 table; Dockerfile updated with Xvfb for Cloud Run
-- [ ] Add Patriot Properties scraper strategy (`search_type: patriot`)
+- [x] O'Donnell & Associates platform (`scraper/platforms/odonnell.py`) — JSON dataset extraction from embedded `script_vars.dataSet`; 36 ME municipalities seeded; `_probe_odonnell()` added to auto-discovery
+- [x] VGSI ME seed expansion — 34 additional municipalities seeded across 9 counties (45 total VGSI ME seeds)
+- [x] Patriot Properties platform (`scraper/platforms/patriot.py`) — 3-step ASP session flow; street type abbreviation handling; Auburn ME + Rockport ME seeded; `_probe_patriot()` added to auto-discovery
+- [x] Tyler Technologies iasWorld platform (`scraper/platforms/tyler.py`) — 5-step disclaimer+search flow; multi-tab datalet fetching (profileall, res_combined, valuesall, sales); Lewiston ME seeded; `_probe_tyler()` added to auto-discovery
+- [x] Harris Computer Systems RE Online platform (`scraper/platforms/harris.py`) — 3-step form flow; clientid-based municipality identification; Readfield ME seeded; `_probe_harris()` added to auto-discovery (pre-seeded clientid registry)
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
 - [ ] Expand VGSI seed data to NH, VT, MA municipalities
 - [ ] Expand qPublic seed data to additional GA, SC, FL, LA counties
+- [ ] Expand Tyler seed data to additional ME municipalities and other states
 
 ### Phase 4 — Protection & Exposure Enrichment
 - [ ] Fire station distance via NFPA / ISO FireLine secondary lookup
