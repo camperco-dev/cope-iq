@@ -1,5 +1,7 @@
 # COPE Property Intelligence
 
+**Last updated: 2026-03-23**
+
 ## What This Project Does
 
 COPE Property Intelligence is an insurance underwriting tool that retrieves
@@ -19,10 +21,11 @@ Supported platforms: **VGSI** (Maine municipalities), **qPublic / Schneider Corp
 (GA, SC, FL counties), **O'Donnell & Associates** (37 Maine municipalities — ownership
 and valuation data only), **Patriot Properties WebPro** (New England municipalities —
 full COPE data), **Tyler Technologies iasWorld** (hundreds of US municipalities —
-full COPE data), and **Harris Computer Systems RE Online** (rural New England
-municipalities — full COPE data). New platforms are added by implementing
-`PropertyPlatform` and registering the class in `PLATFORM_REGISTRY` — no changes to
-the dispatcher or router.
+full COPE data), **Harris Computer Systems RE Online** (rural New England
+municipalities — full COPE data), and **AxisGIS** (CAI Technologies — Maine
+municipalities using Vision, Avitar, Munis, or CAI Trio CAMA). New platforms are added
+by implementing `PropertyPlatform` and registering the class in `PLATFORM_REGISTRY` —
+no changes to the dispatcher or router.
 
 ---
 
@@ -80,7 +83,8 @@ cope-iq/
 │       ├── odonnell.py        ← OdonnellPlatform (O'Donnell & Assoc. / 37 ME towns)
 │       ├── patriot.py         ← PatriotPlatform (Patriot Properties WebPro / New England)
 │       ├── tyler.py           ← TylerPlatform (Tyler Technologies iasWorld / nationwide)
-│       └── harris.py          ← HarrisPlatform (Harris Computer Systems RE Online / rural NE)
+│       ├── harris.py          ← HarrisPlatform (Harris Computer Systems RE Online / rural NE)
+│       └── axisgis.py         ← AxisGISPlatform (CAI Technologies axisgis.com / ME municipalities)
 ├── models/
 │   ├── municipality.py        ← Pydantic municipality doc model (incl. platform_config)
 │   └── property.py            ← Pydantic COPE result doc model
@@ -426,6 +430,80 @@ checking for `frmMain` form marker or `btAgree` disclaimer marker.
 
 ---
 
+## AxisGIS Platform
+
+AxisGIS (CAI Technologies, `axisgis.com`) is used by many Maine municipalities. Each
+municipality has an alphanumeric `municipality_id` (e.g. `"CamdenME"`, `"WarrenME"`).
+
+**Data availability:** Full COPE data when a CAMA vendor PDF is available (Vision,
+Avitar, Munis). CAI Trio municipalities serve a generated PDF via `axisreports.axisgis.com`.
+
+**Scraping flow:**
+
+1. **GET** `https://api.axisgis.com/node/axisapi/search/{municipalityId}?q={query}` — address search
+2. **Step 0 (optional)** — if `vgsi_url` is in `platform_config`, try `VGSIPlatform.fetch()` first;
+   return immediately on success, fall through on failure
+3. **Step 2a** — probe CAMA vendor PDF: `GET /document-view/{municipalityId}?path=Docs/Batch/{vendor}_Property_Card/{pid}.pdf`.
+   Tries vendors in order: Vision → Avitar → Munis → Trio. Trio uses the numeric account
+   portion of the PID only (e.g. `"2390"` from `"2390-1"`).
+4. **Step 2b** — if no vendor PDF found, POST to `https://axisreports.axisgis.com/` with JSON body
+   (CAI Trio CAMA). Response is raw PDF bytes despite `content-encoding: base64` header.
+   Required headers: `Content-Type: text/plain;charset=UTF-8`, `Referer: https://www.axisgis.com/`
+   (root, not municipality page). Payload: `{format, path, rpDatabaseName, rpDisclaimer, rpSubjectCamaFullNum}`.
+5. **Step 2d** — fallback: GET CAI properties JSON endpoint; last resort: format search result attributes.
+
+**Image extraction from CAMA PDFs (pymupdf / fitz):**
+
+pypdf cannot reach JPEG images embedded inside PDF Form XObjects. fitz (`pymupdf`) scans
+the full xref table for `/Image` objects regardless of nesting depth.
+
+Image classification pipeline (three stages):
+
+1. **Logo filter (proximity)** — `_find_logo_xrefs()` scans each page with `page.get_images()`
+   and `page.get_image_rects()`. Images within 72 pt (~1 inch) of civic identity text
+   (`"Town of"`, `"City of"`, `"seal"`, `"crest"`, etc.) are tagged as logos and dropped.
+   Handles municipality seals whose text is present as PDF text elements. Seals with fully
+   rasterized text (no PDF text elements) fall through to stage 3.
+
+2. **Dimension filter** — `_is_logo(w, h)`: drops wide banners (aspect > 3:1) and tiny
+   icons (area < 5 000 px²). Near-square filtering was intentionally removed — building
+   sketches can legitimately be near-square.
+
+3. **Pixel content classification** — `_classify_pixels()` samples every 4th pixel and
+   returns `(white_ratio, midtone_ratio)`:
+   - `_is_sketch_image()`: white_ratio > 0.85 → line drawing → sketch candidate
+   - `_looks_like_photo()`: midtone_ratio ≥ 0.25 → smooth tonal gradients → photo candidate
+   - Neither (bimodal: near-black + near-white, few mid-tones) → municipal seal/crest → discarded.
+     This catches seals with rasterized text that the proximity filter missed.
+
+   Largest sketch candidate → sketch slot. Largest photo candidate with area ≥ 40 000 px² →
+   photo slot. If content analysis yields nothing, falls back to size-based ordering.
+
+**RGBA/CMYK → RGB conversion:** `_to_rgb()` — fitz `Pixmap(cs, src, bool)` 3-arg constructor
+does not exist in pymupdf 1.24. Alpha stripping is done manually by dropping the alpha byte from
+each pixel in the raw samples buffer, then reconstructing with `Pixmap(cs, w, h, samples, False)`.
+
+**`vgsi_url` platform_config key:** If a municipality is served by both AxisGIS and VGSI
+(e.g. Camden ME uses AxisGIS as its GIS map but Vision CAMA is accessible via VGSI),
+set `vgsi_url` in `platform_config`. `AxisGISPlatform.fetch()` will try VGSI first and only
+fall through to the AxisGIS PDF path on error or no-match. Camden ME is currently the only
+seeded municipality with this dual-platform configuration.
+
+**`next.axisgis.com`:** Some municipalities use this alternate subdomain instead of
+`www.axisgis.com` (e.g. Westport Island ME, East Machias ME). The `municipality_id` in
+`platform_config` and the `search_url` must match.
+
+**Required `platform_config` keys:**
+- `municipality_id` (str) — AxisGIS municipality ID, e.g. `"CamdenME"`, `"WarrenME"`
+
+**Optional `platform_config` keys:**
+- `cama_vendor` (str) — skip auto-probe and use this vendor directly: `"Vision"`, `"Avitar"`,
+  `"Munis"`, or `"Trio"`. Omit to auto-probe all vendors in order.
+- `vgsi_url` (str) — VGSI base URL if municipality also has a VGSI endpoint. VGSI is
+  tried first; AxisGIS PDF is the fallback.
+
+---
+
 ## Harris Computer Systems Platform
 
 Harris Computer Systems RE Online (`reonline.harriscomputer.com`) is used by rural New
@@ -512,11 +590,13 @@ path) are present on every VGSI municipality's root page.
 **Cumberland:** Baldwin, Brunswick, Casco, Cumberland, Falmouth, Freeport, Gorham, Harpswell, North Yarmouth, Portland, Raymond, Scarborough, South Portland, Standish, Westbrook, Windham, Yarmouth
 **Hancock:** Mount Desert
 **Kennebec:** Augusta, Gardiner, Monmouth, Waterville, Winslow, Winthrop
-**Knox:** Camden, Rockland, South Thomaston
+**Knox:** Rockland, South Thomaston
 **Penobscot:** Bangor, Orono
 **Sagadahoc:** Bath, Topsham
 **Waldo:** Belfast
 **York:** Arundel, Berwick, Biddeford, Eliot, Kennebunk, Kittery, Ogunquit, Saco, Wells, York
+
+Note: Camden (Knox) is seeded as `axisgis` with `vgsi_url` set — VGSI is tried first.
 
 ### qPublic — Georgia
 Bryan County (`BryanCountyGA`), Haralson County (`HaralsonCountyGA`), Polk County (`PolkCountyGA`)
@@ -544,6 +624,16 @@ Okaloosa County (`OkaloosaCountyFL`)
 
 ### Harris Computer Systems RE Online — Maine
 **Kennebec:** Readfield (`clientid=1007`)
+
+### AxisGIS (CAI Technologies) — Maine
+**Knox:** Camden (`vgsi_url` set; VGSI tried first), Union, Warren
+**Kennebec:** China
+**Lincoln:** Newcastle, Westport Island (`next.axisgis.com`), Wiscasset
+**Oxford:** Brownfield, Fryeburg, Oxford, Porter
+**Penobscot:** Brewer, Hampden, Lincoln, Old Town
+**Somerset:** Fairfield
+**Washington:** Calais, East Machias (`next.axisgis.com`)
+**York:** Kennebunkport, Sanford, South Berwick, Waterboro
 
 To re-seed a dev environment: drop the `municipalities` collection in Atlas, restart the
 server, and hit `POST /admin/seed`.
@@ -586,6 +676,8 @@ server, and hit `POST /admin/seed`.
 - [x] Patriot Properties platform (`scraper/platforms/patriot.py`) — 3-step ASP session flow; street type abbreviation handling; Auburn ME + Rockport ME seeded; `_probe_patriot()` added to auto-discovery
 - [x] Tyler Technologies iasWorld platform (`scraper/platforms/tyler.py`) — 5-step disclaimer+search flow; multi-tab datalet fetching (profileall, res_combined, valuesall, sales); Lewiston ME seeded; `_probe_tyler()` added to auto-discovery
 - [x] Harris Computer Systems RE Online platform (`scraper/platforms/harris.py`) — 3-step form flow; clientid-based municipality identification; Readfield ME seeded; `_probe_harris()` added to auto-discovery (pre-seeded clientid registry)
+- [x] AxisGIS platform (`scraper/platforms/axisgis.py`) — vendor PDF probe (Vision/Avitar/Munis/Trio), axisreports POST for CAI Trio, pixel-content image classification (sketch vs photo), proximity logo detection; 21 ME municipalities seeded across 8 counties
+- [x] AxisGIS `vgsi_url` fallback — Camden ME (and any municipality with both VGSI and AxisGIS endpoints) tries VGSI first for richer structured HTML
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
 - [ ] Expand VGSI seed data to NH, VT, MA municipalities
 - [ ] Expand qPublic seed data to additional GA, SC, FL, LA counties

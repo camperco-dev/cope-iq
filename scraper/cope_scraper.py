@@ -87,8 +87,12 @@ async def search_cope(address: str, municipality: dict, street: str | None = Non
     # ── Extract media URLs before stripping HTML ──────────────────────────────
     photo_url = platform.extract_photo_url(html, base_url)
     sketch_url = platform.extract_sketch_url(html, base_url)
-    print(f"[scraper] photo_url={photo_url!r}")
-    print(f"[scraper] sketch_url={sketch_url!r}")
+    def _truncate(url):
+        if url and url.startswith("data:"):
+            return url[:40] + f"…({len(url)} chars)"
+        return repr(url)
+    print(f"[scraper] photo_url={_truncate(photo_url)}")
+    print(f"[scraper] sketch_url={_truncate(sketch_url)}")
 
     # ── Convert HTML to plain text for Claude ─────────────────────────────────
     text = _html_to_text(html)
@@ -131,7 +135,16 @@ async def search_cope(address: str, municipality: dict, street: str | None = Non
     try:
         result = json.loads(json_match.group())
         print(f"[scraper] JSON parsed OK  keys={list(result.keys())}")
-        return result
     except json.JSONDecodeError as e:
         print(f"[scraper] ERROR: malformed JSON: {e}")
         return {"error": "Malformed JSON in extraction response"}
+
+    # Platform-extracted media URLs take precedence over Claude's extraction.
+    # Claude works from plain text and cannot reliably recover data URIs or
+    # session-relative URLs (e.g. AxisGIS data URIs, Patriot showimage.asp).
+    if photo_url:
+        result["photo_url"] = photo_url
+    if sketch_url:
+        result["sketch_url"] = sketch_url
+
+    return result

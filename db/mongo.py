@@ -7,7 +7,7 @@ _client: AsyncIOMotorClient = None
 SEED_MUNICIPALITIES = [
     # ── Maine / VGSI ──────────────────────────────────────────────────────────
     {"state": "ME", "county": "Knox",         "municipality": "rockland",  "municipality_display": "Rockland",  "search_url": "https://gis.vgsi.com/rocklandme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
-    {"state": "ME", "county": "Knox",         "municipality": "camden",    "municipality_display": "Camden",    "search_url": "https://gis.vgsi.com/camdenme/",     "search_type": "vgsi", "platform_config": {}, "active": True},
+    {"state": "ME", "county": "Knox",         "municipality": "camden",    "municipality_display": "Camden",    "search_url": "https://www.axisgis.com/CamdenME/", "search_type": "axisgis", "platform_config": {"municipality_id": "CamdenME", "cama_vendor": "Vision", "vgsi_url": "https://gis.vgsi.com/camdenme/"}, "active": True},
     {"state": "ME", "county": "Waldo",        "municipality": "belfast",   "municipality_display": "Belfast",   "search_url": "https://gis.vgsi.com/belfastme/",    "search_type": "vgsi", "platform_config": {}, "active": True},
     {"state": "ME", "county": "Cumberland",   "municipality": "portland",  "municipality_display": "Portland",  "search_url": "https://gis.vgsi.com/portlandme/",   "search_type": "vgsi", "platform_config": {}, "active": True},
     {"state": "ME", "county": "Penobscot",    "municipality": "bangor",    "municipality_display": "Bangor",    "search_url": "https://gis.vgsi.com/bangorMe/",     "search_type": "vgsi", "platform_config": {}, "active": True},
@@ -149,6 +149,41 @@ SEED_MUNICIPALITIES = [
     # ── Maine / Harris Computer Systems RE Online ─────────────────────────────
     {"state": "ME", "county": "Kennebec", "municipality": "readfield", "municipality_display": "Readfield", "search_url": "http://reonline.harriscomputer.com/research.aspx?clientid=1007", "search_type": "harris", "platform_config": {}, "active": True},
 
+    # ── Maine / AxisGIS (CAI Technologies) ───────────────────────────────────
+    # Camden (Knox) is seeded at the top of this list as axisgis with vgsi_url set,
+    # so VGSI is tried first and AxisGIS PDF is the fallback.
+    # All entries below use auto-probe (no cama_vendor) since vendor is unknown.
+    # Two entries use next.axisgis.com instead of www.axisgis.com.
+    # Kennebec County
+    {"state": "ME", "county": "Kennebec",  "municipality": "china",          "municipality_display": "China",          "search_url": "https://www.axisgis.com/ChinaME/",            "search_type": "axisgis", "platform_config": {"municipality_id": "ChinaME"},          "active": True},
+    # Knox County
+    {"state": "ME", "county": "Knox",      "municipality": "union",          "municipality_display": "Union",          "search_url": "https://www.axisgis.com/UnionME/",            "search_type": "axisgis", "platform_config": {"municipality_id": "UnionME"},          "active": True},
+    {"state": "ME", "county": "Knox",      "municipality": "warren",         "municipality_display": "Warren",         "search_url": "https://www.axisgis.com/WarrenME/",           "search_type": "axisgis", "platform_config": {"municipality_id": "WarrenME"},         "active": True},
+    # Lincoln County
+    {"state": "ME", "county": "Lincoln",   "municipality": "newcastle",      "municipality_display": "Newcastle",      "search_url": "https://www.axisgis.com/NewcastleME/",        "search_type": "axisgis", "platform_config": {"municipality_id": "NewcastleME"},      "active": True},
+    {"state": "ME", "county": "Lincoln",   "municipality": "westport island","municipality_display": "Westport Island","search_url": "https://next.axisgis.com/Westport_IslandME/","search_type": "axisgis", "platform_config": {"municipality_id": "Westport_IslandME"},"active": True},
+    {"state": "ME", "county": "Lincoln",   "municipality": "wiscasset",      "municipality_display": "Wiscasset",      "search_url": "https://www.axisgis.com/wiscassetme/",        "search_type": "axisgis", "platform_config": {"municipality_id": "wiscassetme"},      "active": True},
+    # Oxford County
+    {"state": "ME", "county": "Oxford",    "municipality": "brownfield",     "municipality_display": "Brownfield",     "search_url": "https://www.axisgis.com/brownfieldme/",       "search_type": "axisgis", "platform_config": {"municipality_id": "brownfieldme"},     "active": True},
+    {"state": "ME", "county": "Oxford",    "municipality": "fryeburg",       "municipality_display": "Fryeburg",       "search_url": "https://www.axisgis.com/fryeburgme/",         "search_type": "axisgis", "platform_config": {"municipality_id": "fryeburgme"},       "active": True},
+    {"state": "ME", "county": "Oxford",    "municipality": "oxford",         "municipality_display": "Oxford",         "search_url": "https://www.axisgis.com/oxfordme/",           "search_type": "axisgis", "platform_config": {"municipality_id": "oxfordme"},         "active": True},
+    {"state": "ME", "county": "Oxford",    "municipality": "porter",         "municipality_display": "Porter",         "search_url": "https://www.axisgis.com/PorterME/",           "search_type": "axisgis", "platform_config": {"municipality_id": "PorterME"},         "active": True},
+    # Penobscot County
+    {"state": "ME", "county": "Penobscot", "municipality": "brewer",         "municipality_display": "Brewer",         "search_url": "https://www.axisgis.com/brewerme/",           "search_type": "axisgis", "platform_config": {"municipality_id": "brewerme"},         "active": True},
+    {"state": "ME", "county": "Penobscot", "municipality": "hampden",        "municipality_display": "Hampden",        "search_url": "https://www.axisgis.com/hampdenme/",          "search_type": "axisgis", "platform_config": {"municipality_id": "hampdenme"},        "active": True},
+    {"state": "ME", "county": "Penobscot", "municipality": "lincoln",        "municipality_display": "Lincoln",        "search_url": "https://www.axisgis.com/LincolnME/",          "search_type": "axisgis", "platform_config": {"municipality_id": "LincolnME"},        "active": True},
+    {"state": "ME", "county": "Penobscot", "municipality": "old town",       "municipality_display": "Old Town",       "search_url": "https://www.axisgis.com/Old_TownME/",         "search_type": "axisgis", "platform_config": {"municipality_id": "Old_TownME"},       "active": True},
+    # Somerset County
+    {"state": "ME", "county": "Somerset",  "municipality": "fairfield",      "municipality_display": "Fairfield",      "search_url": "https://www.axisgis.com/FairfieldME/",        "search_type": "axisgis", "platform_config": {"municipality_id": "FairfieldME"},      "active": True},
+    # Washington County
+    {"state": "ME", "county": "Washington","municipality": "calais",         "municipality_display": "Calais",         "search_url": "https://www.axisgis.com/CalaisME/",           "search_type": "axisgis", "platform_config": {"municipality_id": "CalaisME"},         "active": True},
+    {"state": "ME", "county": "Washington","municipality": "east machias",   "municipality_display": "East Machias",   "search_url": "https://next.axisgis.com/East_MachiasME/",   "search_type": "axisgis", "platform_config": {"municipality_id": "East_MachiasME"},   "active": True},
+    # York County
+    {"state": "ME", "county": "York",      "municipality": "kennebunkport",  "municipality_display": "Kennebunkport",  "search_url": "https://www.axisgis.com/kennebunkportme/",    "search_type": "axisgis", "platform_config": {"municipality_id": "kennebunkportme"},  "active": True},
+    {"state": "ME", "county": "York",      "municipality": "sanford",        "municipality_display": "Sanford",        "search_url": "https://www.axisgis.com/sanfordme/",          "search_type": "axisgis", "platform_config": {"municipality_id": "sanfordme"},        "active": True},
+    {"state": "ME", "county": "York",      "municipality": "south berwick",  "municipality_display": "South Berwick",  "search_url": "https://www.axisgis.com/south_berwickme/",    "search_type": "axisgis", "platform_config": {"municipality_id": "south_berwickme"},  "active": True},
+    {"state": "ME", "county": "York",      "municipality": "waterboro",      "municipality_display": "Waterboro",      "search_url": "https://www.axisgis.com/WaterboroME/",        "search_type": "axisgis", "platform_config": {"municipality_id": "WaterboroME"},      "active": True},
+
     # ── Maine / O'Donnell & Associates ───────────────────────────────────────
     # Androscoggin County
     {"state": "ME", "county": "Androscoggin", "municipality": "livermore",       "municipality_display": "Livermore",       "search_url": "https://jeodonnell.com/cama/livermore/",       "search_type": "odonnell", "platform_config": {"slug": "livermore"},       "active": True},
@@ -229,14 +264,22 @@ async def seed_municipalities():
     """Upsert seed municipalities by (state, municipality) key.
 
     Runs on every startup so platform corrections in SEED_MUNICIPALITIES
-    (e.g. search_type / search_url changes) propagate to existing databases
-    without requiring a collection drop.
+    (e.g. search_type / search_url / platform_config changes) propagate to
+    existing databases without requiring a collection drop.
 
-    ``platform_config`` is only written on insert to preserve admin-enriched
-    fields such as qPublic ``search_page_url`` values added via admin tooling.
+    ``platform_config`` is written via ``$set`` so that corrections to seed
+    values (e.g. switching Camden from vgsi to axisgis) propagate on restart.
+    Admin-enriched sub-keys (e.g. qPublic ``search_page_url``) are preserved
+    via ``$set`` on the specific seed keys using dot-notation merge rather than
+    replacing the whole dict, so extra keys added by admin tooling survive.
     """
     now = datetime.now(timezone.utc)
     for m in SEED_MUNICIPALITIES:
+        seed_config = m.get("platform_config", {})
+        # Build dot-notation $set entries for each platform_config key so we
+        # overwrite only the keys present in seed, leaving any extra admin-added
+        # keys (e.g. search_page_url) untouched.
+        config_set = {f"platform_config.{k}": v for k, v in seed_config.items()}
         await municipalities().update_one(
             {"state": m["state"], "municipality": m["municipality"]},
             {
@@ -247,10 +290,10 @@ async def seed_municipalities():
                     "search_type": m["search_type"],
                     "active": m.get("active", True),
                     "added_by": "seed",
+                    **config_set,
                 },
                 "$setOnInsert": {
                     "date_added": now,
-                    "platform_config": m.get("platform_config", {}),
                 },
             },
             upsert=True,

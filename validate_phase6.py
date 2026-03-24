@@ -113,7 +113,41 @@ async def test_qpublic(address: str):
           any(v is not None for v in (result.get("valuation") or {}).values()))
 
 
-# ── Test 4: Registry and dispatcher structural checks ─────────────────────────
+# ── Test 4: AxisGIS smoke test ────────────────────────────────────────────────
+async def test_axisgis(address: str):
+    print(bold(f"\n[4] AxisGIS smoke test — {address}"))
+    from scraper.cope_scraper import search_cope
+
+    camden_muni = {
+        "search_type": "axisgis",
+        "search_url": "https://www.axisgis.com/CamdenME/",
+        "platform_config": {
+            "municipality_id": "CamdenME",
+            "cama_vendor": "Vision",
+        },
+    }
+    result = await search_cope(address, camden_muni, street=address.split(",")[0].strip())
+
+    if result.get("error"):
+        print(f"  {FAIL}  scraper returned error: {result['error']}")
+        results.append(False)
+        return
+
+    print(f"  matched_address : {result.get('matched_address')}")
+    print(f"  parcel_id       : {result.get('parcel_id')}")
+    print(f"  owner           : {result.get('owner')}")
+    print(f"  valuation       : {result.get('valuation')}")
+    print()
+
+    check("matched_address is non-null", bool(result.get("matched_address")))
+    check("parcel_id is non-null",       bool(result.get("parcel_id")))
+    check("owner section present",       isinstance(result.get("owner"), dict))
+    check("valuation or construction has non-null field",
+          any(v is not None for v in (result.get("valuation") or {}).values()) or
+          any(v is not None for v in (result.get("construction") or {}).values()))
+
+
+# ── Test 5: Registry and dispatcher structural checks ─────────────────────────
 async def test_registry():
     print(bold("\n[4] Registry and dispatcher structural checks"))
     from scraper.platforms import PLATFORM_REGISTRY, PropertyPlatform
@@ -128,13 +162,15 @@ async def test_registry():
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 async def main():
-    vgsi_address   = "51 Mountain View, Rockland, ME 04841"
+    vgsi_address    = "51 Mountain View, Rockland, ME 04841"
     qpublic_address = "100 Courthouse Dr, Pembroke, GA 31321"
+    axisgis_address = "34 Elm St, Camden, ME 04843"
 
     await test_registry()
     await test_unsupported_platform()
     await test_vgsi(vgsi_address)
     await test_qpublic(qpublic_address)
+    await test_axisgis(axisgis_address)
 
     passed = sum(results)
     total  = len(results)
