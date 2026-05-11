@@ -147,13 +147,50 @@ async def test_axisgis(address: str):
           any(v is not None for v in (result.get("construction") or {}).values()))
 
 
-# ── Test 5: Registry and dispatcher structural checks ─────────────────────────
+# ── Test 5: ArcGIS smoke test ─────────────────────────────────────────────────
+async def test_arcgis(address: str):
+    print(bold(f"\n[5] ArcGIS smoke test — {address}"))
+    from scraper.cope_scraper import search_cope
+
+    aspen_muni = {
+        "search_type": "arcgis",
+        "search_url": "https://maps.pitkincounty.com/arcgis/rest/services/Parcel_Overlay/MapServer/9",
+        "platform_config": {
+            "city": "ASPEN",
+            "viewer_url_template": "https://qpublic.schneidercorp.com/Application.aspx?AppID=1071&LayerID=26013&PageTypeID=4&KeyValue={account}",
+        },
+    }
+    result = await search_cope(address, aspen_muni, street=address.split(",")[0].strip())
+
+    if result.get("error"):
+        print(f"  {FAIL}  scraper returned error: {result['error']}")
+        results.append(False)
+        return
+
+    print(f"  matched_address : {result.get('matched_address')}")
+    print(f"  parcel_id       : {result.get('parcel_id')}")
+    print(f"  data_source_url : {result.get('data_source_url')}")
+    print(f"  owner           : {result.get('owner')}")
+    print(f"  valuation       : {result.get('valuation')}")
+    print()
+
+    check("matched_address is non-null", bool(result.get("matched_address")))
+    check("parcel_id is non-null",       bool(result.get("parcel_id")))
+    check("data_source_url is qPublic deeplink",
+          "qpublic.schneidercorp.com" in (result.get("data_source_url") or ""))
+    check("owner section present",       isinstance(result.get("owner"), dict))
+    check("valuation has non-null field",
+          any(v is not None for v in (result.get("valuation") or {}).values()))
+
+
+# ── Test 6: Registry and dispatcher structural checks ─────────────────────────
 async def test_registry():
-    print(bold("\n[4] Registry and dispatcher structural checks"))
+    print(bold("\n[6] Registry and dispatcher structural checks"))
     from scraper.platforms import PLATFORM_REGISTRY, PropertyPlatform
 
     check("vgsi in registry",    "vgsi"    in PLATFORM_REGISTRY)
     check("qpublic in registry", "qpublic" in PLATFORM_REGISTRY)
+    check("arcgis in registry",  "arcgis"  in PLATFORM_REGISTRY)
     for name, platform in PLATFORM_REGISTRY.items():
         check(f"{name} is PropertyPlatform subclass", isinstance(platform, PropertyPlatform))
         check(f"{name} extraction_hints() returns str",
@@ -165,12 +202,14 @@ async def main():
     vgsi_address    = "51 Mountain View, Rockland, ME 04841"
     qpublic_address = "100 Courthouse Dr, Pembroke, GA 31321"
     axisgis_address = "34 Elm St, Camden, ME 04843"
+    arcgis_address  = "1008 East Hopkins Ave, Aspen, CO 81611"
 
     await test_registry()
     await test_unsupported_platform()
     await test_vgsi(vgsi_address)
     await test_qpublic(qpublic_address)
     await test_axisgis(axisgis_address)
+    await test_arcgis(arcgis_address)
 
     passed = sum(results)
     total  = len(results)

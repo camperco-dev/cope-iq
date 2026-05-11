@@ -5,6 +5,7 @@ from .patriot import PatriotPlatform
 from .tyler import TylerPlatform
 from .harris import HarrisPlatform
 from .axisgis import AxisGISPlatform
+from .arcgis import ArcGISPlatform
 from .base import PropertyPlatform
 
 PLATFORM_REGISTRY: dict[str, PropertyPlatform] = {
@@ -15,6 +16,7 @@ PLATFORM_REGISTRY: dict[str, PropertyPlatform] = {
     "tyler":    TylerPlatform(),
     "harris":   HarrisPlatform(),
     "axisgis":  AxisGISPlatform(),
+    "arcgis":   ArcGISPlatform(),
 }
 
 __all__ = ["PLATFORM_REGISTRY", "PropertyPlatform"]

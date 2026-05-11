@@ -1,6 +1,6 @@
 # COPE Property Intelligence
 
-**Last updated: 2026-03-23**
+**Last updated: 2026-05-11**
 
 ## What This Project Does
 
@@ -22,10 +22,13 @@ Supported platforms: **VGSI** (Maine municipalities), **qPublic / Schneider Corp
 and valuation data only), **Patriot Properties WebPro** (New England municipalities —
 full COPE data), **Tyler Technologies iasWorld** (hundreds of US municipalities —
 full COPE data), **Harris Computer Systems RE Online** (rural New England
-municipalities — full COPE data), and **AxisGIS** (CAI Technologies — Maine
-municipalities using Vision, Avitar, Munis, or CAI Trio CAMA). New platforms are added
-by implementing `PropertyPlatform` and registering the class in `PLATFORM_REGISTRY` —
-no changes to the dispatcher or router.
+municipalities — full COPE data), **AxisGIS** (CAI Technologies — Maine
+municipalities using Vision, Avitar, Munis, or CAI Trio CAMA), and **ArcGIS**
+(Esri public parcel feature layers — used for counties that publish
+parcel data through `*.arcgis.com` or their own ArcGIS Server, e.g. Pitkin
+County / Aspen CO). New platforms are added by implementing `PropertyPlatform`
+and registering the class in `PLATFORM_REGISTRY` — no changes to the dispatcher
+or router.
 
 ---
 
@@ -84,7 +87,8 @@ cope-iq/
 │       ├── patriot.py         ← PatriotPlatform (Patriot Properties WebPro / New England)
 │       ├── tyler.py           ← TylerPlatform (Tyler Technologies iasWorld / nationwide)
 │       ├── harris.py          ← HarrisPlatform (Harris Computer Systems RE Online / rural NE)
-│       └── axisgis.py         ← AxisGISPlatform (CAI Technologies axisgis.com / ME municipalities)
+│       ├── axisgis.py         ← AxisGISPlatform (CAI Technologies axisgis.com / ME municipalities)
+│       └── arcgis.py          ← ArcGISPlatform (Esri public parcel feature layers / Pitkin County CO)
 ├── models/
 │   ├── municipality.py        ← Pydantic municipality doc model (incl. platform_config)
 │   └── property.py            ← Pydantic COPE result doc model
@@ -191,6 +195,8 @@ touching the dispatcher or any router.
 | `scraper/platforms/patriot.py` | `PatriotPlatform` — Patriot WebPro 3-step session flow |
 | `scraper/platforms/tyler.py` | `TylerPlatform` — Tyler iasWorld 5-step session flow |
 | `scraper/platforms/harris.py` | `HarrisPlatform` — Harris RE Online 3-step form flow |
+| `scraper/platforms/axisgis.py` | `AxisGISPlatform` — CAI Technologies multi-vendor PDF flow |
+| `scraper/platforms/arcgis.py` | `ArcGISPlatform` — Esri ArcGIS REST parcel feature layers |
 | `scraper/platforms/__init__.py` | `PLATFORM_REGISTRY` dict mapping `search_type` → platform instance |
 | `scraper/cope_scraper.py` | Dispatcher — looks up platform, owns `httpx.AsyncClient`, calls Claude |
 
@@ -504,6 +510,59 @@ seeded municipality with this dual-platform configuration.
 
 ---
 
+## ArcGIS Platform
+
+Esri ArcGIS public parcel feature layers — used by county GIS departments that
+publish parcel data through ArcGIS Server / FeatureServer / MapServer endpoints
+(e.g. Pitkin County, CO at `maps.pitkincounty.com`). These layers return
+structured JSON attributes, so no HTML parsing is required.
+
+**Data availability:** Full COPE-relevant fields when the underlying parcel
+layer carries assessor data — owner, sale price/date, assessed values,
+year built, square footage, bedrooms/baths, stories, abstract use codes.
+Photos and sketches are not exposed by parcel feature services; both
+`extract_photo_url` and `extract_sketch_url` always return None.
+
+**Scraping flow (single HTTP request — no browser automation):**
+
+1. **GET** `{layer_url}/query?where=...&outFields=*&f=json` — Esri REST query
+   API. Filters: `SITUS_ADDRESS_HOUSENUMBER='<n>'` AND
+   `UPPER(SITUS_ADDRESS) LIKE '%<word>%'` AND (optional) `UPPER(CITY)='<city>'`.
+   Field names are overridable via `platform_config`.
+2. Take the first feature; convert any ms-since-epoch date fields to ISO date strings.
+3. Build a synthetic HTML card from the attribute dict and return
+   `(parcel_id, situs_address, html, viewer_url)`.
+
+**`viewer_url_template`:** ArcGIS REST endpoints are scraper-friendly but not
+human-friendly. When the county also has a public viewer (e.g. Pitkin's qPublic
+deeplink), set `viewer_url_template` to a `str.format()` string with an
+`{account}` placeholder — substituted with the `ACCOUNTNUMBER` attribute — so
+the user-facing `data_source_url` deep-links to the human UI. The qPublic UI
+is Cloudflare-protected against scrapers but works fine in a real browser.
+
+**Cloudflare note:** Schneider Corp's qPublic UI returns 403 to non-browser
+clients (see [qPublic Platform](#qpublic-platform)). The matching ArcGIS REST
+service hosted by the county itself is typically Cloudflare-free, which is why
+ArcGIS is the preferred path for any county that exposes both.
+
+**Required `platform_config` keys:** none — `search_url` (the layer URL with
+trailing layer ID, e.g. `.../MapServer/9`) carries the mandatory state.
+
+**Optional `platform_config` keys:**
+- `city` (str) — value for the `CITY` filter, useful when a single county
+  layer covers multiple municipalities. Omit for no city filter.
+- `viewer_url_template` (str) — `str.format()` template with `{account}` token.
+- `house_number_field` (str) — default `SITUS_ADDRESS_HOUSENUMBER`.
+- `address_field` (str) — default `SITUS_ADDRESS`.
+- `city_field` (str) — default `CITY`.
+
+**Auto-discovery:** none. ArcGIS endpoint URLs are not standardized across
+counties (each agency picks its own host, service folder, and layer ID), so
+new ArcGIS-backed municipalities must be added to `SEED_MUNICIPALITIES`
+manually.
+
+---
+
 ## Harris Computer Systems Platform
 
 Harris Computer Systems RE Online (`reonline.harriscomputer.com`) is used by rural New
@@ -635,6 +694,10 @@ Okaloosa County (`OkaloosaCountyFL`)
 **Washington:** Calais, East Machias (`next.axisgis.com`)
 **York:** Kennebunkport, Sanford, South Berwick, Waterboro
 
+### ArcGIS (Esri public parcel layers) — Colorado
+**Pitkin:** Aspen (`maps.pitkincounty.com/.../Parcel_Overlay/MapServer/9`; `viewer_url_template`
+deeplinks to the Pitkin qPublic property card)
+
 To re-seed a dev environment: drop the `municipalities` collection in Atlas, restart the
 server, and hit `POST /admin/seed`.
 
@@ -678,6 +741,7 @@ server, and hit `POST /admin/seed`.
 - [x] Harris Computer Systems RE Online platform (`scraper/platforms/harris.py`) — 3-step form flow; clientid-based municipality identification; Readfield ME seeded; `_probe_harris()` added to auto-discovery (pre-seeded clientid registry)
 - [x] AxisGIS platform (`scraper/platforms/axisgis.py`) — vendor PDF probe (Vision/Avitar/Munis/Trio), axisreports POST for CAI Trio, pixel-content image classification (sketch vs photo), proximity logo detection; 21 ME municipalities seeded across 8 counties
 - [x] AxisGIS `vgsi_url` fallback — Camden ME (and any municipality with both VGSI and AxisGIS endpoints) tries VGSI first for richer structured HTML
+- [x] ArcGIS platform (`scraper/platforms/arcgis.py`) — Esri REST parcel feature layer query; structured JSON attributes rendered as synthetic HTML card; Aspen CO (Pitkin County) seeded with qPublic viewer deeplink
 - [ ] Bulk municipality import tool (CSV upload in admin panel)
 - [ ] Expand VGSI seed data to NH, VT, MA municipalities
 - [ ] Expand qPublic seed data to additional GA, SC, FL, LA counties

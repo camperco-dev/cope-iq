@@ -227,6 +227,20 @@ SEED_MUNICIPALITIES = [
     {"state": "ME", "county": "York",         "municipality": "lebanon",          "municipality_display": "Lebanon",          "search_url": "https://jeodonnell.com/cama/lebanon/",         "search_type": "odonnell", "platform_config": {"slug": "lebanon"},         "active": True},
     {"state": "ME", "county": "York",         "municipality": "limerick",         "municipality_display": "Limerick",         "search_url": "https://jeodonnell.com/cama/limerick/",        "search_type": "odonnell", "platform_config": {"slug": "limerick"},        "active": True},
     {"state": "ME", "county": "York",         "municipality": "shapleigh",        "municipality_display": "Shapleigh",        "search_url": "https://jeodonnell.com/cama/shapleigh/",       "search_type": "odonnell", "platform_config": {"slug": "shapleigh"},       "active": True},
+
+    # ── Colorado / ArcGIS (Esri public parcel layers) ────────────────────────
+    {
+        "state": "CO", "county": "Pitkin",
+        "municipality": "aspen",
+        "municipality_display": "Aspen",
+        "search_url": "https://maps.pitkincounty.com/arcgis/rest/services/Parcel_Overlay/MapServer/9",
+        "search_type": "arcgis",
+        "platform_config": {
+            "city": "ASPEN",
+            "viewer_url_template": "https://qpublic.schneidercorp.com/Application.aspx?AppID=1071&LayerID=26013&PageTypeID=4&KeyValue={account}",
+        },
+        "active": True,
+    },
 ]
 
 
